@@ -35,19 +35,52 @@ func EMA(src []float64, period int) []float64 {
 	return out
 }
 
-// RMA Wilder smoothing (alpha=1/period)
+// RMA Wilder smoothing (alpha=1/period) — fix NaN handling for ADX
 func RMA(src []float64, period int) []float64 {
 	n:=len(src)
 	out:=make([]float64,n)
 	for i:=range out{out[i]=math.NaN()}
 	if period<=0||n==0{return out}
+	// Find first window with all valid (non-NaN) values
 	sum:=0.0
+	validCount:=0
 	for i:=0;i<n;i++{
-		if i<period{
-			sum+=src[i]
-			if i==period-1{out[i]=sum/float64(period)}
-		}else{
-			out[i]=(out[i-1]*float64(period-1)+src[i])/float64(period)
+		if math.IsNaN(src[i]){
+			// reset window if NaN encountered in initial period
+			sum=0
+			validCount=0
+			continue
+		}
+		sum+=src[i]
+		validCount++
+		if validCount==period{
+			out[i]=sum/float64(period)
+			// Wilder smoothing for rest, skipping NaNs
+			for j:=i+1;j<n;j++{
+				if math.IsNaN(src[j]){
+					out[j]=math.NaN()
+					continue
+				}
+				if math.IsNaN(out[j-1]){
+					// find previous valid out
+					prevIdx:=j-1
+					for prevIdx>=0 && math.IsNaN(out[prevIdx]){prevIdx--}
+					if prevIdx<0{
+						// no valid previous, need to recompute window
+						sum2:=0.0
+						cnt2:=0
+						for k:=j-period+1;k<=j;k++{
+							if k>=0 && !math.IsNaN(src[k]){sum2+=src[k]; cnt2++}
+						}
+						if cnt2==period{out[j]=sum2/float64(period)}else{out[j]=math.NaN()}
+					} else {
+						out[j]=(out[prevIdx]*float64(period-1)+src[j])/float64(period)
+					}
+				} else {
+					out[j]=(out[j-1]*float64(period-1)+src[j])/float64(period)
+				}
+			}
+			break
 		}
 	}
 	return out

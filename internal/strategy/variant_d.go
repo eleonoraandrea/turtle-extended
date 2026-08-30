@@ -49,10 +49,8 @@ func (s *VariantD) Next(ctx *Context, i int) Signal {
 		trendLong = ema50 > ema200 && closePx > ema200
 		trendShort = ema50 < ema200 && closePx < ema200
 	}
-	fundingZ:=ctx.FundingZ[i]
-	if !math.IsNaN(fundingZ) && math.Abs(fundingZ) > c.FundingZThreshold {
-		return Signal{Side:0, Reason:"D funding veto"}
-	}
+	// FUNDING RIMOSSO su richiesta utente — non blocca più l'entry (solo costo in backtest)
+	// fundingZ:=ctx.FundingZ[i] // ora solo info per report, non veto
 	vol:=ctx.Volume[i]
 	volSMA:=ctx.VolumeSMA[i]
 	if !volConfirm(vol, volSMA, c.VolumeMult){
@@ -61,6 +59,7 @@ func (s *VariantD) Next(ctx *Context, i int) Signal {
 	var oiDelta float64
 	hasOI:= ctx.OI[i]!=0 && !math.IsNaN(ctx.OI[i]) && !math.IsNaN(ctx.OI[i-1]) && ctx.OI[i-1]!=0
 	if hasOI { oiDelta=(ctx.OI[i]-ctx.OI[i-1])/ctx.OI[i-1] }
+	fundingZ:=ctx.FundingZ[i] // solo per Meta, non per veto
 	// adaptive channel selection based on volRegime
 	var hhPrev, llPrev float64
 	var channel string
@@ -82,18 +81,17 @@ func (s *VariantD) Next(ctx *Context, i int) Signal {
 	if !math.IsNaN(volReg){
 		if volReg>80 { atrMult = 2.5 } else if volReg>60 { atrMult=2.0 } else if volReg<20 { atrMult=1.5 }
 	}
-	// long
+	// long — funding non blocca più (solo costo)
 	if trendLong && !math.IsNaN(hhPrev) && closePx > hhPrev && prevClose <= hhPrev {
 		if hasOI && oiDelta < c.OIDeltaThreshold {
-			// weak OI but if funding strongly supports?
-			if math.Abs(fundingZ) >1.0 { /* allow */ } else { return Signal{Side:0, Reason:"D OI weak long"}}
+			return Signal{Side:0, Reason:"D OI weak long"}
 		}
 		stop:= closePx - atrMult*atr
 		return Signal{Side:1, Strength:1, StopPrice: stop, Reason:"D "+channel+" long adaptive", Meta: map[string]float64{"atrMult":atrMult,"adx":adx,"volReg":volReg,"oiDelta":oiDelta, "fundingZ":fundingZ}}
 	}
 	if trendShort && !math.IsNaN(llPrev) && closePx < llPrev && prevClose >= llPrev {
 		if hasOI && oiDelta < c.OIDeltaThreshold {
-			if math.Abs(fundingZ) >1.0 {} else {return Signal{Side:0, Reason:"D OI weak short"}}
+			return Signal{Side:0, Reason:"D OI weak short"}
 		}
 		stop:= closePx + atrMult*atr
 		return Signal{Side:-1, Strength:1, StopPrice: stop, Reason:"D "+channel+" short adaptive", Meta: map[string]float64{"atrMult":atrMult,"adx":adx,"volReg":volReg}}

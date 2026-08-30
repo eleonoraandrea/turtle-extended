@@ -31,11 +31,7 @@ func (s *VariantC) Next(ctx *Context, i int) Signal {
 		trendLong = ema50 > ema200 && closePx > ema200
 		trendShort = ema50 < ema200 && closePx < ema200
 	}
-	fundingZ:=ctx.FundingZ[i]
-	// Funding extremes veto
-	if !math.IsNaN(fundingZ) && math.Abs(fundingZ) > c.FundingZThreshold {
-		return Signal{Side:0, Reason:"C funding z veto"}
-	}
+	fundingZ:=ctx.FundingZ[i] // funding solo costo, non veto
 	// Volume confirmation
 	vol:=ctx.Volume[i]
 	volSMA:=ctx.VolumeSMA[i]
