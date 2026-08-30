@@ -1,0 +1,688 @@
+package backtest
+
+import (
+	"math"
+	"time"
+
+	"github.com/atps/atps/internal/config"
+	"github.com/atps/atps/internal/data"
+	"github.com/atps/atps/internal/indicators"
+	"github.com/atps/atps/internal/risk"
+	"github.com/atps/atps/internal/strategy"
+)
+
+// Trade represents one round-trip (entry to exit)
+type Trade struct {
+	Symbol     string    `json:"symbol"`
+	Side       int       `json:"side"` // 1 long, -1 short
+	EntryTime  time.Time `json:"entry_time"`
+	ExitTime   time.Time `json:"exit_time"`
+	EntryPrice float64   `json:"entry_price"`
+	ExitPrice  float64   `json:"exit_price"`
+	Qty        float64   `json:"qty"`
+	EntryATR   float64   `json:"entry_atr"`
+	StopPrice  float64   `json:"stop_price"`
+	ExitReason string    `json:"exit_reason"`
+	PnL        float64   `json:"pnl"`     // gross PnL in quote (USDC)
+	PnLNet     float64   `json:"pnl_net"` // net after fees+funding
+	Fee        float64   `json:"fee"`
+	FundingCost float64  `json:"funding_cost"`
+	Slippage   float64   `json:"slippage"`
+	BarsHeld   int       `json:"bars_held"`
+	MAE        float64   `json:"mae"`
+	MFE        float64   `json:"mfe"`
+	ReturnPct  float64   `json:"return_pct"`
+	// ── risk engine audit ──
+	RiskPct    float64   `json:"risk_pct"`     // effective risk % of equity at entry
+	Leverage   float64   `json:"leverage"`     // notional/equity at entry (DYNAMIC)
+	Notional   float64   `json:"notional"`     // entry notional
+	StopDist   float64   `json:"stop_dist"`    // |entry-stop|
+	RMultiple  float64   `json:"r_multiple"`   // PnLNet / riskAmount
+	SizingLog  string    `json:"sizing_log,omitempty"`
+	IsSatellite bool     `json:"is_satellite,omitempty"`
+}
+
+// Position open — supports satellite 30% for large winners (positive skew)
+type Position struct {
+	Symbol      string
+	Side        int
+	Qty         float64
+	EntryPrice  float64
+	EntryTime   time.Time
+	EntryATR    float64
+	StopPrice   float64
+	Units       int
+	EntryBarIdx int
+	MAE         float64
+	MFE         float64
+	FundingAccum float64
+	RiskPct     float64
+	Leverage    float64
+	Notional    float64
+	RiskAmount  float64
+	SizingLog   string
+	IsSatellite bool // true = satellite 30% (wide trailing, captures +5R/+10R)
+	DonExitLen  int  // per-position Donchian exit length (core 20, satellite 55)
+}
+
+type EquityPoint struct {
+	Time     time.Time `json:"time"`
+	Equity  float64   `json:"equity"`
+	Gross   float64   `json:"gross,omitempty"`
+	Drawdown float64  `json:"drawdown,omitempty"`
+	Price   float64   `json:"price"`
+	Heat    float64   `json:"heat,omitempty"` // open risk % at this bar
+	Leverage float64 `json:"leverage,omitempty"` // open notional/equity
+}
+
+type Result struct {
+	Symbol   string        `json:"symbol"`
+	Variant  string        `json:"variant"`
+	Bars     data.Bars     `json:"-"`
+	Trades   []Trade       `json:"trades"`
+	Equity   []EquityPoint `json:"equity"`
+	InitialCapital float64 `json:"initial_capital"`
+	FinalEquity    float64 `json:"final_equity"`
+	GrossPnL       float64 `json:"gross_pnl"`
+	NetPnL         float64 `json:"net_pnl"`
+	TotalFee       float64 `json:"total_fee"`
+	TotalFunding   float64 `json:"total_funding"`
+	TotalSlippage  float64 `json:"total_slippage"`
+	MaxUnits       int     `json:"max_units"`
+	// risk audit aggregates
+	AvgLeverage    float64 `json:"avg_leverage"`
+	MaxLeverageUsed float64 `json:"max_leverage_used"`
+	AvgRiskPct     float64 `json:"avg_risk_pct"`
+	MaxRiskPctUsed float64 `json:"max_risk_pct_used"`
+	MaxHeatSeen    float64 `json:"max_heat_seen"`
+	RiskLimitsUsed risk.RiskLimits `json:"risk_limits_used"`
+}
+
+type EngineConfig struct {
+	Variant string
+	Symbol  string
+	InitialCapital float64
+	FeeBps    float64
+	SlippageBps float64
+	Leverage float64 // legacy fallback hard cap if risk.max_leverage==0
+	UseNextOpen bool
+	PyramidingMax int
+	PyramidStepATR float64
+	TrailATRMult float64
+	TrailMode string
+	DonExit int
+}
+
+func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng EngineConfig) *Result {
+	res := &Result{Symbol: eng.Symbol, Variant: eng.Variant, InitialCapital: eng.InitialCapital, FinalEquity: eng.InitialCapital}
+	if len(bars) == 0 {
+		return res
+	}
+
+	// ── risk limits: dynamic leverage, max risk per trade ──
+	lim := risk.LimitsFromConfig(cfg, eng.Variant)
+	if lim.MaxLeverage == 0 {
+		lim.MaxLeverage = eng.Leverage // legacy fallback
+		if lim.MaxLeverage == 0 {
+			lim.MaxLeverage = 3
+		}
+	}
+	if lim.MaxNotional == 0 && cfg != nil && cfg.Costs.MaxNotionalPerTrade > 0 {
+		lim.MaxNotional = cfg.Costs.MaxNotionalPerTrade
+	}
+	res.RiskLimitsUsed = lim
+
+	ctx := strat.Prepare(bars)
+	n := len(bars)
+	equity := eng.InitialCapital
+	peak := equity
+	var positions []*Position
+	var trades []Trade
+	var equityCurve []EquityPoint
+	var totalFee, totalFundingNet, totalSlippage float64
+
+	var donExitH, donExitL []float64
+	exitLen := eng.DonExit
+	if exitLen == 0 {
+		exitLen = 20
+	}
+	high := make([]float64, n)
+	low := make([]float64, n)
+	for i, b := range bars {
+		high[i] = b.High
+		low[i] = b.Low
+	}
+	donExitH = indicators.DonchianHigh(high, exitLen)
+	donExitL = indicators.DonchianLow(low, exitLen)
+	// satellite exit (wider, for 30% satellite to capture large winners)
+	donExitH55 := indicators.DonchianHigh(high, 55)
+	donExitL55 := indicators.DonchianLow(low, 55)
+
+	intervalH := intervalHours(cfg.General.Interval)
+	if intervalH == 0 {
+		intervalH = 4
+	}
+
+	brakeUntil := -1
+
+	// helpers -----------------------------------------------------------------
+	openHeat := func() float64 {
+		sum := 0.0
+		for _, p := range positions {
+			sum += p.RiskPct
+		}
+		return sum
+	}
+	openNotional := func(px float64) float64 {
+		sum := 0.0
+		for _, p := range positions {
+			sum += p.Qty * px
+		}
+		return sum
+	}
+
+	for i := 0; i < n; i++ {
+		bar := bars[i]
+
+		// ── funding accrual (8h funding scaled to bar interval) ──
+		for _, pos := range positions {
+			if bar.FundingRate != 0 {
+				scale := intervalH / 8.0
+				notional := pos.Qty * bar.Close
+				pay := notional * bar.FundingRate * scale
+				if pos.Side == 1 {
+					// long pays positive funding
+					equity -= pay
+					pos.FundingAccum += pay
+					totalFundingNet += pay
+				} else {
+					// short receives positive funding
+					equity += pay
+					pos.FundingAccum -= pay
+					totalFundingNet -= pay
+				}
+			}
+		}
+
+		// ── exits (stop intrabar, donchian exit per-position, trailing) ──
+		// Satellite positions use Donchian 55 (wide) to hold for large winners (+5R/+10R) → positive skew
+		var remaining []*Position
+		for _, pos := range positions {
+			exit := false
+			exitReason := ""
+			exitPrice := bar.Close
+			// per-position Donchian level
+			var donL, donH float64
+			if pos.DonExitLen == 55 {
+				donL = donExitL55[i]
+				donH = donExitH55[i]
+			} else {
+				donL = donExitL[i]
+				donH = donExitH[i]
+			}
+
+			if pos.Side == 1 {
+				if bar.Low <= pos.StopPrice {
+					exit = true
+					exitReason = "stop"
+					exitPrice = pos.StopPrice
+					if eng.SlippageBps > 0 {
+						exitPrice -= exitPrice * eng.SlippageBps / 10000.0
+					}
+				} else if !math.IsNaN(donL) && bar.Close < donL {
+					exit = true
+					if pos.IsSatellite {
+						exitReason = "satellite_donchian55"
+					} else {
+						exitReason = "donchian_exit"
+					}
+					exitPrice = bar.Close
+				} else {
+					var newStop float64
+					if eng.TrailMode == "chandelier" {
+						// satellite uses wider trail to let large winners run
+						mult := 3.0
+						if pos.IsSatellite {
+							mult = 4.0
+						}
+						newStop = strategy.TrailStop(ctx, i, pos.Side, mult, "chandelier")
+					} else {
+						newStop = donL
+					}
+					if !math.IsNaN(newStop) {
+						pos.StopPrice = risk.TrailStopPosition(pos.StopPrice, newStop, pos.Side)
+					}
+				}
+			} else if pos.Side == -1 {
+				if bar.High >= pos.StopPrice {
+					exit = true
+					exitReason = "stop"
+					exitPrice = pos.StopPrice
+					if eng.SlippageBps > 0 {
+						exitPrice += exitPrice * eng.SlippageBps / 10000.0
+					}
+				} else if !math.IsNaN(donH) && bar.Close > donH {
+					exit = true
+					if pos.IsSatellite {
+						exitReason = "satellite_donchian55"
+					} else {
+						exitReason = "donchian_exit"
+					}
+					exitPrice = bar.Close
+				} else {
+					var newStop float64
+					if eng.TrailMode == "chandelier" {
+						mult := 3.0
+						if pos.IsSatellite {
+							mult = 4.0
+						}
+						newStop = strategy.TrailStop(ctx, i, pos.Side, mult, "chandelier")
+					} else {
+						newStop = donH
+					}
+					if !math.IsNaN(newStop) {
+						pos.StopPrice = risk.TrailStopPosition(pos.StopPrice, newStop, pos.Side)
+					}
+				}
+			}
+
+			// MAE/MFE
+			if pos.Side == 1 {
+				if mae := (bar.Low - pos.EntryPrice) / pos.EntryPrice * 100; mae < pos.MAE {
+					pos.MAE = mae
+				}
+				if mfe := (bar.High - pos.EntryPrice) / pos.EntryPrice * 100; mfe > pos.MFE {
+					pos.MFE = mfe
+				}
+			} else {
+				if mae := (pos.EntryPrice - bar.High) / pos.EntryPrice * 100; mae < pos.MAE {
+					pos.MAE = mae
+				}
+				if mfe := (pos.EntryPrice - bar.Low) / pos.EntryPrice * 100; mfe > pos.MFE {
+					pos.MFE = mfe
+				}
+			}
+
+			if exit {
+				var pnl float64
+				if pos.Side == 1 {
+					pnl = (exitPrice - pos.EntryPrice) * pos.Qty
+				} else {
+					pnl = (pos.EntryPrice - exitPrice) * pos.Qty
+				}
+				fee := (pos.EntryPrice + exitPrice) * pos.Qty * eng.FeeBps / 10000.0
+				pnlNet := pnl - fee - pos.FundingAccum
+				equity += pnl - fee
+				totalFee += fee
+				rMult := 0.0
+				if pos.RiskAmount > 0 {
+					rMult = pnlNet / pos.RiskAmount
+				}
+				trades = append(trades, Trade{
+					Symbol: eng.Symbol, Side: pos.Side,
+					EntryTime: pos.EntryTime, ExitTime: bar.Time,
+					EntryPrice: pos.EntryPrice, ExitPrice: exitPrice,
+					Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice,
+					ExitReason: exitReason, PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum,
+					BarsHeld: i - pos.EntryBarIdx, MAE: pos.MAE, MFE: pos.MFE,
+					ReturnPct: pnlNet / (pos.EntryPrice * pos.Qty) * 100,
+					RiskPct:   pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional,
+					StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult,
+					SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite,
+				})
+			} else {
+				remaining = append(remaining, pos)
+			}
+		}
+		positions = remaining
+
+		// ── crash brake ──
+		if cfg.Portfolio.CrashBrakeDropPct > 0 && i > 0 {
+			retPct := (bar.Close - bars[i-1].Close) / bars[i-1].Close * 100
+			if math.Abs(retPct) >= cfg.Portfolio.CrashBrakeDropPct {
+				for _, pos := range positions {
+					var pnl float64
+					if pos.Side == 1 {
+						pnl = (bar.Close - pos.EntryPrice) * pos.Qty
+					} else {
+						pnl = (pos.EntryPrice - bar.Close) * pos.Qty
+					}
+					fee := (pos.EntryPrice + bar.Close) * pos.Qty * eng.FeeBps / 10000.0
+					pnlNet := pnl - fee - pos.FundingAccum
+					equity += pnl - fee
+					totalFee += fee
+					rMult := 0.0
+					if pos.RiskAmount > 0 {
+						rMult = pnlNet / pos.RiskAmount
+					}
+					trades = append(trades, Trade{Symbol: eng.Symbol, Side: pos.Side, EntryTime: pos.EntryTime, ExitTime: bar.Time, EntryPrice: pos.EntryPrice, ExitPrice: bar.Close, Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice, ExitReason: "crash_brake", PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum, BarsHeld: i - pos.EntryBarIdx, MAE: pos.MAE, MFE: pos.MFE, RiskPct: pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional, StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult, SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite})
+				}
+				positions = nil
+				brakeUntil = i + 6
+			}
+		}
+
+		// mark-to-market equity + drawdown for risk state
+		unrealized := 0.0
+		for _, pos := range positions {
+			if pos.Side == 1 {
+				unrealized += (bar.Close - pos.EntryPrice) * pos.Qty
+			} else {
+				unrealized += (pos.EntryPrice - bar.Close) * pos.Qty
+			}
+		}
+		curEq := equity + unrealized
+		if curEq > peak {
+			peak = curEq
+		}
+		ddPct := 0.0
+		if peak > 0 {
+			ddPct = (curEq - peak) / peak * 100 // negative
+		}
+
+		if i < brakeUntil {
+			equityCurve = append(equityCurve, EquityPoint{Time: bar.Time, Equity: curEq, Drawdown: ddPct, Price: bar.Close, Heat: openHeat(), Leverage: openNotional(bar.Close) / math.Max(curEq, 1)})
+			continue
+		}
+
+		// ── signal + RISK-BASED SIZING with DYNAMIC LEVERAGE ──
+		sig := strat.Next(ctx, i)
+		if sig.Side != 0 {
+			atr := ctx.ATR[i]
+			if math.IsNaN(atr) {
+				atr = 0
+			}
+
+			// fill price preview (next open + slippage)
+			fillPrice := bar.Close
+			fillTime := bar.Time
+			if eng.UseNextOpen && i+1 < n {
+				fillPrice = bars[i+1].Open
+				fillTime = bars[i+1].Time
+				if eng.SlippageBps > 0 {
+					if sig.Side == 1 {
+						fillPrice += fillPrice * eng.SlippageBps / 10000.0
+					} else {
+						fillPrice -= fillPrice * eng.SlippageBps / 10000.0
+					}
+				}
+			} else if eng.SlippageBps > 0 {
+				if sig.Side == 1 {
+					fillPrice += fillPrice * eng.SlippageBps / 10000.0
+				} else {
+					fillPrice -= fillPrice * eng.SlippageBps / 10000.0
+				}
+			}
+
+			// stop proposal (signal stop or 2×ATR fallback)
+			stopPx := sig.StopPrice
+			if math.IsNaN(stopPx) || stopPx <= 0 {
+				stopPx = fillPrice - float64(sig.Side)*2*atr
+				if math.IsNaN(stopPx) {
+					stopPx = 0
+				}
+			}
+
+			// market state for risk engine — includes correlated heat for 2% limit
+			// sameSideHeat computed earlier for pyramiding; recompute for fresh entry as well
+			corrHeat := 0.0
+			for _, p := range positions {
+				if p.Side == sig.Side {
+					corrHeat += p.RiskPct
+				}
+			}
+			ms := risk.MarketState{
+				Equity:              math.Max(curEq, 1),
+				Price:               fillPrice,
+				ATR:                 atr,
+				StopPrice:           stopPx,
+				Side:                sig.Side,
+				VolRegime:           ctx.VolRegime[i],
+				ADX:                 ctx.ADX[i],
+				FundingZ:            ctx.FundingZ[i],
+				VolAnnualizedPct:    risk.AnnualizedVolPct(atr, fillPrice, intervalH),
+				PortfolioHeatPct:    openHeat(),
+				PortfolioCorrelatedPct: corrHeat,
+				EquityDDPct:         -ddPct, // positive number
+			}
+
+			// ── pyramiding: count same-side units ──
+			sameSideUnits := 0
+			sameSideHeat := 0.0
+			var earliest *Position
+			for _, p := range positions {
+				if p.Side == sig.Side {
+					sameSideUnits += p.Units
+					sameSideHeat += p.RiskPct
+					if earliest == nil {
+						earliest = p
+					}
+				}
+			}
+			hasSameSide := earliest != nil
+			if hasSameSide {
+				// ── pyramiding ──
+				if risk.CanPyramid(earliest.EntryPrice, bar.Close, atr, sig.Side, sameSideUnits, eng.PyramidingMax, eng.PyramidStepATR) {
+					dec := risk.Size(ms, lim)
+					// risk_neutral: pyramid does not increase total risk (stop of existing moved to breakeven)
+					if lim.PyramidingRiskNeutral {
+						// keep total risk near base: pyramid risk is small, not added to heat
+						dec.RiskPct = dec.RiskPct * 0.5 // pyramid at half risk when risk_neutral
+						dec.RiskAmount = dec.RiskPct / 100 * ms.Equity
+						dec.Qty = dec.RiskAmount / dec.StopDist
+						dec.Notional = dec.Qty * fillPrice
+						dec.Leverage = dec.Notional / ms.Equity
+						dec.Factors = append(dec.Factors, "pyramid risk_neutral ×0.5")
+					} else {
+						dec.Notional = dec.Qty * fillPrice
+						dec.RiskAmount = dec.Qty * dec.StopDist
+						if ms.Equity > 0 {
+							dec.RiskPct = dec.RiskAmount / ms.Equity * 100
+							// total leverage after pyramid
+							totalNotional := 0.0
+							for _, p := range positions {
+								if p.Side == sig.Side {
+									totalNotional += p.Notional
+								}
+							}
+							dec.Leverage = (totalNotional + dec.Notional) / ms.Equity
+						}
+					}
+					if dec.Accept && dec.Qty > 0 {
+						fee := fillPrice * dec.Qty * eng.FeeBps / 10000.0
+						equity -= fee
+						totalFee += fee
+						// risk_neutral: total risk stays near base, so don't sum full pyramid risk
+						if lim.PyramidingRiskNeutral {
+							// keep total heat constant: pyramid is funded by trailing existing stop to breakeven
+							earliest.Qty += dec.Qty
+							earliest.Units++
+							earliest.Notional += dec.Notional
+							earliest.Leverage = earliest.Notional / ms.Equity
+							// risk stays same (risk_neutral) — don't add RiskPct/RiskAmount
+							if !math.IsNaN(stopPx) {
+								earliest.StopPrice = risk.TrailStopPosition(earliest.StopPrice, stopPx, sig.Side)
+							}
+							earliest.SizingLog += " | pyramid(risk_neutral): " + logFactors(dec)
+						} else {
+							totalQty := earliest.Qty + dec.Qty
+							earliest.EntryPrice = (earliest.EntryPrice*earliest.Qty + fillPrice*dec.Qty) / totalQty
+							earliest.Qty = totalQty
+							earliest.Units++
+							earliest.RiskPct += dec.RiskPct
+							earliest.RiskAmount += dec.RiskAmount
+							earliest.Notional += dec.Notional
+							earliest.Leverage = earliest.Notional / ms.Equity
+							if !math.IsNaN(stopPx) {
+								earliest.StopPrice = risk.TrailStopPosition(earliest.StopPrice, stopPx, sig.Side)
+							}
+							earliest.SizingLog += " | pyramid: " + logFactors(dec)
+						}
+					}
+				}
+			} else if len(positions) == 0 {
+				// ── fresh entry: full risk-based sizing + satellite 30% for positive skew ──
+				dec := risk.Size(ms, lim)
+				if dec.Accept && dec.Qty > 0 {
+					fee := fillPrice * dec.Qty * eng.FeeBps / 10000.0
+					equity -= fee
+					totalFee += fee
+					if lim.SatelliteEnabled && lim.SatelliteAlloc > 0 && lim.SatelliteAlloc < 1 {
+						// split total qty into core (70%) and satellite (30%): satellite holds for large winners +5R/+10R
+						coreQty := dec.Qty * (1 - lim.SatelliteAlloc)
+						satQty := dec.Qty * lim.SatelliteAlloc
+						coreRisk := dec.RiskPct * (1 - lim.SatelliteAlloc)
+						satRisk := dec.RiskPct * lim.SatelliteAlloc
+						coreNotional := coreQty * fillPrice
+						satNotional := satQty * fillPrice
+						coreLev := coreNotional / ms.Equity
+						satLev := satNotional / ms.Equity
+						corePos := &Position{
+							Symbol: eng.Symbol, Side: sig.Side, Qty: coreQty,
+							EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
+							StopPrice: stopPx, Units: 1, EntryBarIdx: i,
+							RiskPct: coreRisk, Leverage: coreLev,
+							Notional: coreNotional, RiskAmount: coreRisk/100*ms.Equity,
+							SizingLog: logFactors(dec) + " | core 70%",
+							IsSatellite: false, DonExitLen: 20,
+						}
+						satPos := &Position{
+							Symbol: eng.Symbol, Side: sig.Side, Qty: satQty,
+							EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
+							StopPrice: stopPx, Units: 1, EntryBarIdx: i,
+							RiskPct: satRisk, Leverage: satLev,
+							Notional: satNotional, RiskAmount: satRisk/100*ms.Equity,
+							SizingLog: logFactors(dec) + " | satellite 30% (wide Don55)",
+							IsSatellite: true, DonExitLen: 55,
+						}
+						positions = append(positions, corePos, satPos)
+					} else {
+						pos := &Position{
+							Symbol: eng.Symbol, Side: sig.Side, Qty: dec.Qty,
+							EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
+							StopPrice: stopPx, Units: 1, EntryBarIdx: i,
+							RiskPct: dec.RiskPct, Leverage: dec.Leverage,
+							Notional: dec.Notional, RiskAmount: dec.RiskAmount,
+							SizingLog: logFactors(dec),
+							DonExitLen: 20,
+						}
+						positions = append(positions, pos)
+					}
+				}
+			}
+		}
+
+		// equity curve point with heat + leverage audit
+		unrealized = 0.0
+		for _, pos := range positions {
+			if pos.Side == 1 {
+				unrealized += (bar.Close - pos.EntryPrice) * pos.Qty
+			} else {
+				unrealized += (pos.EntryPrice - bar.Close) * pos.Qty
+			}
+		}
+		curEq = equity + unrealized
+		if curEq > peak {
+			peak = curEq
+		}
+		dd := 0.0
+		if peak > 0 {
+			dd = (curEq - peak) / peak * 100
+		}
+		heat := openHeat()
+		equityCurve = append(equityCurve, EquityPoint{Time: bar.Time, Equity: curEq, Drawdown: dd, Price: bar.Close, Heat: heat, Leverage: openNotional(bar.Close) / math.Max(curEq, 1)})
+	}
+
+	// close remaining at last bar
+	for _, pos := range positions {
+		exitPrice := bars[n-1].Close
+		var pnl float64
+		if pos.Side == 1 {
+			pnl = (exitPrice - pos.EntryPrice) * pos.Qty
+		} else {
+			pnl = (pos.EntryPrice - exitPrice) * pos.Qty
+		}
+		fee := (pos.EntryPrice + exitPrice) * pos.Qty * eng.FeeBps / 10000.0
+		pnlNet := pnl - fee - pos.FundingAccum
+		equity += pnl - fee
+		totalFee += fee
+		rMult := 0.0
+		if pos.RiskAmount > 0 {
+			rMult = pnlNet / pos.RiskAmount
+		}
+		trades = append(trades, Trade{Symbol: eng.Symbol, Side: pos.Side, EntryTime: pos.EntryTime, ExitTime: bars[n-1].Time, EntryPrice: pos.EntryPrice, ExitPrice: exitPrice, Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice, ExitReason: "eod", PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum, BarsHeld: n - 1 - pos.EntryBarIdx, RiskPct: pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional, StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult, SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite})
+	}
+
+	final := equity
+	if len(equityCurve) > 0 {
+		equityCurve[len(equityCurve)-1].Equity = final
+	}
+	gross, net := 0.0, 0.0
+	maxLev, sumLev, maxRisk, sumRisk, maxHeat := 0.0, 0.0, 0.0, 0.0, 0.0
+	for _, t := range trades {
+		gross += t.PnL
+		net += t.PnLNet
+		if t.Leverage > maxLev {
+			maxLev = t.Leverage
+		}
+		sumLev += t.Leverage
+		if t.RiskPct > maxRisk {
+			maxRisk = t.RiskPct
+		}
+		sumRisk += t.RiskPct
+	}
+	for _, e := range equityCurve {
+		if e.Heat > maxHeat {
+			maxHeat = e.Heat
+		}
+	}
+	tn := float64(len(trades))
+	if tn > 0 {
+		res.AvgLeverage = sumLev / tn
+		res.AvgRiskPct = sumRisk / tn
+	}
+	res.MaxLeverageUsed = maxLev
+	res.MaxRiskPctUsed = maxRisk
+	res.MaxHeatSeen = maxHeat
+
+	res.Bars = bars
+	res.Trades = trades
+	res.Equity = equityCurve
+	res.FinalEquity = final
+	res.GrossPnL = gross
+	res.NetPnL = net
+	res.TotalFee = totalFee
+	res.TotalFunding = totalFundingNet
+	res.TotalSlippage = totalSlippage
+	return res
+}
+
+func logFactors(d risk.SizingDecision) string {
+	s := ""
+	for i, f := range d.Factors {
+		if i > 0 {
+			s += "; "
+		}
+		s += f
+	}
+	return s
+}
+
+func intervalHours(interval string) float64 {
+	switch interval {
+	case "1m":
+		return 1.0 / 60
+	case "5m":
+		return 5.0 / 60
+	case "15m":
+		return 15.0 / 60
+	case "1h":
+		return 1
+	case "4h":
+		return 4
+	case "1d":
+		return 24
+	default:
+		return 4
+	}
+}

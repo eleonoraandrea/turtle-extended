@@ -1,0 +1,10 @@
+/atps
+/atps-live
+reports/*.html
+reports/*.json
+data/raw/*.csv
+data/cache/
+data/raw/*_funding.json
+*.tmp
+.env
+/tmp/atps.halt

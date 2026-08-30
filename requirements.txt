@@ -1,0 +1,2 @@
+# Go project — use go.mod, not pip. Kept for legacy compatibility.
+# Run: go mod tidy
