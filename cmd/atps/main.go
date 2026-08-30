@@ -29,7 +29,7 @@ func main(){
 Binance per dati, Orderly per live (isolato con -tags live).`,
 	}
 	root.PersistentFlags().StringVar(&cfgPath, "config", "configs/default.yaml", "path to config yaml")
-	root.AddCommand(cmdDownload(), cmdBacktest(), cmdCompare(), cmdWalkForward(), cmdMonteCarlo(), cmdPerturb(), cmdPortfolio(), cmdGenerateDemo(), cmdReportDemo(), cmdTUI())
+	root.AddCommand(cmdDownload(), cmdBacktest(), cmdCompare(), cmdWalkForward(), cmdMonteCarlo(), cmdPerturb(), cmdPortfolio(), cmdGenerateDemo(), cmdReportDemo(), cmdTUI(), cmdLive())
 
 	if err:= root.Execute(); err!=nil{ os.Exit(1)}
 }
