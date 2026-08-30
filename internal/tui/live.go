@@ -57,7 +57,7 @@ func NewLive(cfg *config.Config, b *bot.Bot, symbol, variant, interval string, p
 }
 
 func (m LiveModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.tickCmd(), tea.EnterAltScreen)
+	return tea.Batch(m.spinner.Tick, m.tickCmd(), m.botTickCmd(), tea.EnterAltScreen)
 }
 
 func (m LiveModel) tickCmd() tea.Cmd {
@@ -113,6 +113,15 @@ func (m LiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "c", "C":
 			m.bot.GetLogs() // just to keep
+			return m, nil
+		case "d", "D":
+			newDry := !m.bot.IsDryRun()
+			m.bot.SetDryRun(newDry)
+			if newDry {
+				m.status = "✓ dry-run → PAPER (nessun ordine reale) — toggle 'd' per LIVE"
+			} else {
+				m.status = "⚠️ dry-run → LIVE (ordini reali!) — toggle 'd' per tornare PAPER"
+			}
 			return m, nil
 		}
 		// viewport scroll
@@ -184,9 +193,13 @@ func (m LiveModel) View() string {
 }
 
 func (m LiveModel) viewLiveHeader() string {
+	isDry := m.bot.IsDryRun()
 	mode := "LIVE"
 	modeColor := lipgloss.NewStyle().Background(redCol).Foreground(lipgloss.Color("#FFFFFF")).Bold(true).Padding(0, 1)
-	if m.paper {
+	if isDry {
+		mode = "DRY-RUN"
+		modeColor = lipgloss.NewStyle().Background(greenCol).Foreground(lipgloss.Color("#052E16")).Bold(true).Padding(0, 1)
+	} else if m.paper {
 		mode = "PAPER"
 		modeColor = lipgloss.NewStyle().Background(greenCol).Foreground(lipgloss.Color("#052E16")).Bold(true).Padding(0, 1)
 	}

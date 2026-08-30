@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"sync"
 	"time"
 
@@ -36,11 +37,12 @@ type Bot struct {
 	lastUpdate time.Time
 	logs      []string
 	maxLogs   int
-	paper     bool
+	dryRun    bool // true = paper (nessun ordine reale) — NUOVO flag esplicito
+	paper     bool // alias per compat (paper == dryRun)
 	stopCh    chan struct{}
 }
 
-func New(cfg *config.Config, symbol, interval, variant string, paper bool) (*Bot, error) {
+func New(cfg *config.Config, symbol, interval, variant string, dryRun bool) (*Bot, error) {
 	binanceBase := cfg.Data.BinanceBase
 	if binanceBase == "" {
 		binanceBase = data.DefaultBinanceBase
@@ -48,22 +50,28 @@ func New(cfg *config.Config, symbol, interval, variant string, paper bool) (*Bot
 	bc := data.NewBinanceClient(binanceBase)
 	strat := strategy.New(variant, cfg)
 
+	// dryRun = paper — alias
+	paper := dryRun
 	var adapter execution.Adapter
-	if paper {
+	if dryRun {
 		adapter = execution.NewPaper()
 	} else {
-		// try Orderly live if env provided
+		// LIVE: prova Orderly con env/flags (già settati come env da live.go)
 		base := cfg.Orderly.Mainnet
 		if base == "" {
 			base = "https://api.orderly.org"
 		}
-		// read from env if not in config
-		accountID := "" // will be set via env or config extension
-		key := ""
-		secret := ""
-		// allow override via config map? For now use paper if not set
+		accountID := os.Getenv("ORDERLY_ACCOUNT_ID")
+		if accountID == "" {
+			accountID = os.Getenv("ORDERLY_ACCOUNT")
+		}
+		key := os.Getenv("ORDERLY_KEY")
+		secret := os.Getenv("ORDERLY_SECRET")
+		// fallback a cfg se presente (estensione futura: cfg.Orderly.AccountId etc.)
 		if accountID == "" || key == "" || secret == "" {
+			// chiavi mancanti → fallback automatico a PAPER per sicurezza
 			adapter = execution.NewPaper()
+			dryRun = true
 			paper = true
 		} else {
 			adapter = orderly.New(base, accountID, key, secret)
@@ -81,6 +89,7 @@ func New(cfg *config.Config, symbol, interval, variant string, paper bool) (*Bot
 		equity:   cfg.General.InitialCapital,
 		peak:     cfg.General.InitialCapital,
 		maxLogs:  200,
+		dryRun:   dryRun,
 		paper:    paper,
 		stopCh:   make(chan struct{}),
 	}
@@ -184,6 +193,43 @@ func (b *Bot) GetLastSignal() strategy.Signal {
 }
 
 func (b *Bot) IsPaper() bool { return b.paper }
+func (b *Bot) IsDryRun() bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.dryRun
+}
+func (b *Bot) GetDryRun() bool { return b.IsDryRun() }
+func (b *Bot) SetDryRun(dryRun bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.dryRun == dryRun {
+		return
+	}
+	b.dryRun = dryRun
+	b.paper = dryRun
+	if dryRun {
+		b.adapter = execution.NewPaper()
+		b.logf("dry-run → PAPER (adapter paper, nessun ordine reale)")
+	} else {
+		// prova a passare a Orderly se chiavi presenti
+		base := b.cfg.Orderly.Mainnet
+		if base == "" {
+			base = "https://api.orderly.org"
+		}
+		accountID := os.Getenv("ORDERLY_ACCOUNT_ID")
+		key := os.Getenv("ORDERLY_KEY")
+		secret := os.Getenv("ORDERLY_SECRET")
+		if accountID != "" && key != "" && secret != "" {
+			b.adapter = orderly.New(base, accountID, key, secret)
+			b.logf("dry-run → LIVE (Orderly %s, account %s)", base, accountID)
+		} else {
+			b.adapter = execution.NewPaper()
+			b.dryRun = true
+			b.paper = true
+			b.logf("dry-run false richiesto ma chiavi Orderly mancanti → fallback PAPER")
+		}
+	}
+}
 
 func (b *Bot) OrderlySymbol() string {
 	if m, ok := b.cfg.Orderly.SymbolsMap[b.symbol]; ok {
@@ -211,15 +257,40 @@ func replaceAll(s, old, new string) string {
 }
 
 // Tick fetches latest bar, updates signal, and optionally places order
+// Verificato: non blocca oltre 12s, logga ogni fase per non sembrare "waiting tick"
 func (b *Bot) Tick(ctx context.Context) error {
-	// 1. refresh bars (fetch last 2)
+	b.logf("tick → fetch klines %s %s (dry-run=%v)", b.symbol, b.interval, b.IsDryRun())
+	// 1. refresh bars (fetch last 2) with timeout
 	end := time.Now().UTC()
 	start := end.Add(-2 * intervalToDuration(b.interval))
-	latest, err := b.binance.FetchKlines(b.symbol, b.interval, start, end)
+	// use child context with timeout to avoid hanging
+	fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	// FetchKlines currently ignores ctx; we run it in goroutine with timeout
+	type res struct {
+		bars data.Bars
+		err  error
+	}
+	ch := make(chan res, 1)
+	go func() {
+		latest, err := b.binance.FetchKlines(b.symbol, b.interval, start, end)
+		ch <- res{latest, err}
+	}()
+	var latest data.Bars
+	var err error
+	select {
+	case r := <-ch:
+		latest = r.bars
+		err = r.err
+	case <-fetchCtx.Done():
+		b.logf("fetch klines timeout after 10s")
+		return fetchCtx.Err()
+	}
 	if err != nil {
 		b.logf("fetch klines error: %v", err)
 		return err
 	}
+	b.logf("fetch ok: %d bars (last %s close %.2f)", len(latest), latest[len(latest)-1].Time.Format("15:04"), latest[len(latest)-1].Close)
 	if len(latest) > 0 {
 		b.mu.Lock()
 		// append or update

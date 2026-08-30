@@ -17,9 +17,11 @@ import (
 func cmdLive() *cobra.Command {
 	var symbol, variant, interval string
 	var paper bool
+	var dryRun bool
 	var liveFlag, iUnderstandLive bool
 	var testnet bool
 	var pollSec int
+	var orderlyAccount, orderlyKey, orderlySecret string
 
 	cmd := &cobra.Command{
 		Use:   "live",
@@ -27,17 +29,25 @@ func cmdLive() *cobra.Command {
 		Long: `Live bot ATPS su Orderly (Binance klines per segnali, Orderly per esecuzione).
 
 Paper (sicuro, default):
-  ./atps live --symbol BTCUSDT --variant D --interval 4h
+  ./atps live --symbol BTCUSDT --variant D --interval 4h                    # dry-run=true (paper)
+  ./atps live --dry-run=false --live --i-understand-live                    # ordini reali
 
-Live reale (richiede env + flag):
+Dry-run toggle (NUOVO):
+  --dry-run=true   (default) → paper, nessun ordine reale, logga soltanto
+  --dry-run=false  → ordini reali Orderly (richiede --live --i-understand-live + chiavi)
+
+Live reale (richiede chiavi + flag):
   ORDERLY_ACCOUNT_ID=... ORDERLY_KEY=... ORDERLY_SECRET=... \
-  ./atps live --symbol BTCUSDT --variant D --live --i-understand-live
+  ./atps live --symbol BTCUSDT --variant D --dry-run=false --live --i-understand-live
+
+  # oppure via flags (hanno precedenza su env):
+  ./atps live --orderly-account 0x... --orderly-key ed25519:... --orderly-secret base64... --dry-run=false --live --i-understand-live
 
 Testnet:
-  ./atps live --testnet --symbol BTCUSDT --variant D --live --i-understand-live
+  ./atps live --testnet --symbol BTCUSDT --variant D --dry-run=false --live --i-understand-live
 
 Safety: paper default, kill-switch /tmp/atps.halt, heat 3%/2%, leva hard 5×, crash brake 8% → flat 24h.
-Spec: docs/LIVE_EXECUTION_SPEC.md
+Spec: docs/LIVE_EXECUTION_SPEC.md — TUI: 'd' toggle dry-run live.
 `,
 		Run: func(cmd *cobra.Command, args []string) {
 			cfg := loadCfg()
@@ -50,48 +60,88 @@ Spec: docs/LIVE_EXECUTION_SPEC.md
 			if interval == "" {
 				interval = cfg.General.Interval
 			}
-			// safety: live requires flag
-			isLive := liveFlag && iUnderstandLive
+			// --- dry-run logic (NUOVO, esplicito) ---
+			// --dry-run=true (default) → paper sempre, anche se --live presente senza conferma
+			// --dry-run=false + --live + --i-understand-live + chiavi → LIVE reale
+			// Compat: --paper=false → dryRun=false
+			if cmd.Flags().Changed("paper") && !cmd.Flags().Changed("dry-run") {
+				dryRun = paper // --paper true → dryRun true
+			}
+			if cmd.Flags().Changed("dry-run") {
+				// dryRun esplicito ha precedenza
+			} else {
+				// default dryRun=true, ma se --live con conferma e --paper non toccato, rispetta dryRun default true (sicuro)
+				// utente deve mettere --dry-run=false per live reale
+				if paper == false && dryRun {
+					// --paper=false senza --dry-run → interpreto come dryRun=false per compat
+					dryRun = false
+				}
+			}
+			// flag orderly da CLI hanno precedenza su env
+			if orderlyAccount != "" {
+				_ = os.Setenv("ORDERLY_ACCOUNT_ID", orderlyAccount)
+			}
+			if orderlyKey != "" {
+				_ = os.Setenv("ORDERLY_KEY", orderlyKey)
+			}
+			if orderlySecret != "" {
+				_ = os.Setenv("ORDERLY_SECRET", orderlySecret)
+			}
+			// safety: live richiede flag
+			isLive := liveFlag && iUnderstandLive && !dryRun
 			if liveFlag && !iUnderstandLive {
 				fmt.Fprintln(os.Stderr, "⚠️  --live richiede --i-understand-live (conferma ordini reali)")
-				fmt.Fprintln(os.Stderr, "   Senza flag il bot resta in PAPER (sicuro).")
+				fmt.Fprintln(os.Stderr, "   Senza flag il bot resta in PAPER (dry-run=true).")
 				isLive = false
-				paper = true
+				dryRun = true
+			}
+			if dryRun {
+				isLive = false
 			}
 			if isLive {
-				paper = false
 				if testnet {
 					cfg.Orderly.Mainnet = cfg.Orderly.Testnet
 					if cfg.Orderly.Mainnet == "" {
 						cfg.Orderly.Mainnet = "https://testnet-api.orderly.org"
 					}
 				}
-				// also check env
+				// also check env/flags
+				acc := os.Getenv("ORDERLY_ACCOUNT_ID")
+				if acc == "" {
+					acc = os.Getenv("ORDERLY_SECRET") // fallback check
+				}
 				if os.Getenv("ORDERLY_SECRET") == "" && os.Getenv("ORDERLY_KEY") == "" {
-					fmt.Fprintln(os.Stderr, "⚠️  Env ORDERLY_* mancanti → fallback PAPER")
-					paper = true
+					fmt.Fprintln(os.Stderr, "⚠️  Env ORDERLY_* mancanti → fallback PAPER (dry-run=true)")
+					dryRun = true
 					isLive = false
 				}
 				// kill switch check
 				if _, err := os.Stat("/tmp/atps.halt"); err == nil {
 					fmt.Fprintln(os.Stderr, "🛑 Kill-switch attivo (/tmp/atps.halt) → PAPER forzato")
-					paper = true
+					dryRun = true
 					isLive = false
 				}
-			} else {
-				paper = true
 			}
+			if dryRun {
+				isLive = false
+			}
+			paper = dryRun // alias per compat con bot.New
 
-			modeStr := "PAPER"
-			if !paper {
+			modeStr := "PAPER (dry-run)"
+			if !dryRun {
 				modeStr = "LIVE"
 				if testnet {
 					modeStr = "LIVE-TESTNET"
 				}
 			}
-			fmt.Printf("Avvio bot %s %s %s [%s] paper=%v interval=%s poll=%ds\n", symbol, variant, interval, modeStr, paper, interval, pollSec)
+			fmt.Printf("Avvio bot %s %s %s [%s] dry-run=%v live=%v interval=%s poll=%ds\n", symbol, variant, interval, modeStr, dryRun, isLive, interval, pollSec)
+			if dryRun {
+				fmt.Println("✓ DRY-RUN attivo — nessun ordine reale verrà inviato (paper). Metti --dry-run=false --live --i-understand-live per LIVE.")
+			} else {
+				fmt.Println("⚠️  LIVE ATTIVO — ordini reali Orderly verranno inviati!")
+			}
 
-			b, err := bot.New(cfg, symbol, interval, variant, paper)
+			b, err := bot.New(cfg, symbol, interval, variant, dryRun)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "bot init error: %v\n", err)
 				os.Exit(1)
@@ -100,7 +150,11 @@ Spec: docs/LIVE_EXECUTION_SPEC.md
 			// If not a TTY (e.g., headless, CI), run headless loop without TUI
 			if !isTTY() {
 				fmt.Println("No TTY rilevato — avvio modalità headless (Ctrl-C per stop)")
-				fmt.Println("Paper:", paper, "— nessun ordine reale se paper=true. Logs ogni tick:")
+				if dryRun {
+					fmt.Println("DRY-RUN=true — nessun ordine reale (paper). Logs ogni tick:")
+				} else {
+					fmt.Println("DRY-RUN=false — LIVE ordini reali Orderly!")
+				}
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				go b.Start(ctx, time.Duration(pollSec)*time.Second)
@@ -118,13 +172,12 @@ Spec: docs/LIVE_EXECUTION_SPEC.md
 							fmt.Println(logs[i])
 						}
 						last = len(logs)
-						// also show equity/positions snapshot every 5 ticks
 					}
 				}
 			}
 
-			// TUI mode
-			m := tui.NewLive(cfg, b, symbol, variant, interval, paper)
+			// TUI mode — passa dryRun per header e toggle 'd'
+			m := tui.NewLive(cfg, b, symbol, variant, interval, dryRun)
 			// start bot in background
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -142,11 +195,16 @@ Spec: docs/LIVE_EXECUTION_SPEC.md
 	cmd.Flags().StringVar(&symbol, "symbol", "", "BTCUSDT, ETHUSDT, SOLUSDT")
 	cmd.Flags().StringVar(&variant, "variant", "", "A/B/C/D (default D)")
 	cmd.Flags().StringVar(&interval, "interval", "", "1h, 4h, 1d")
-	cmd.Flags().BoolVar(&paper, "paper", true, "paper trading (simulato, default true)")
-	cmd.Flags().BoolVar(&liveFlag, "live", false, "abilita ordini reali Orderly (richiede --i-understand-live)")
+	cmd.Flags().BoolVar(&paper, "paper", true, "DEPRECATO: usa --dry-run (paper=true → dry-run=true)")
+	_ = cmd.Flags().MarkHidden("paper")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "true=paper (nessun ordine reale), false=ordini reali Orderly (richiede --live --i-understand-live)")
+	cmd.Flags().BoolVar(&liveFlag, "live", false, "abilita ordini reali Orderly (richiede --i-understand-live + --dry-run=false)")
 	cmd.Flags().BoolVar(&iUnderstandLive, "i-understand-live", false, "conferma invio ordini reali")
 	cmd.Flags().BoolVar(&testnet, "testnet", false, "usa Orderly testnet")
 	cmd.Flags().IntVar(&pollSec, "poll", 30, "poll interval secondi (live)")
+	cmd.Flags().StringVar(&orderlyAccount, "orderly-account", "", "Orderly ACCOUNT_ID (alternativa a env ORDERLY_ACCOUNT_ID)")
+	cmd.Flags().StringVar(&orderlyKey, "orderly-key", "", "Orderly KEY (ed25519 pub, alternativa a env)")
+	cmd.Flags().StringVar(&orderlySecret, "orderly-secret", "", "Orderly SECRET base64 seed/priv (alternativa a env ORDERLY_SECRET)")
 
 	return cmd
 }
