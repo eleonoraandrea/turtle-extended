@@ -4,6 +4,8 @@ Framework quantitativo perpetuo: **Binance dati, Orderly esecuzione**.
 
 > Variant A classic Turtle → B + regime → C + funding/OI/volume → D full adaptive (breakout 20/55/100, ATR, ADX, EMA 50/200, vol regime, crash brake, pyramiding, trailing chandelier, vol-targeting). Report HTML MT5-style dettagliato, self-contained, Lightweight-Charts 4.1.
 
+> **Prima volta? → [Guida Avvio completa → docs/GUIDA_AVVIO.md](docs/GUIDA_AVVIO.md)** — clona, build, dati reali, backtest, TUI, bot live paper/live.
+
 ## Quickstart — TUI
 
 ```bash
