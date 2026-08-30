@@ -82,7 +82,7 @@ volatility:
 drawdown:
   adaptive_risk: true
 funding:
-  filter: true
+  filter: false  # DISABILITATO su richiesta utente (19/08) — funding solo costo (fee), non blocca entry
 open_interest:
   filter: true
 

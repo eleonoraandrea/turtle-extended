@@ -278,14 +278,8 @@ func (m LiveModel) viewLiveMarket() string {
 			mutedStyle.Render("Mark:"), last.MarkPrice,
 			mutedStyle.Render("QuoteVol:"), last.QuoteVolume,
 		)
-		// Funding veto explanation
-		sig := m.bot.GetLastSignal()
-		fundingNote := ""
-		if strings.Contains(sig.Reason, "funding veto") {
-			fundingNote = errorStyle.Render("⛔ FUNDING VETO") + " " + mutedStyle.Render("(funding |z|>2.8 → mercato iper-affollato, skip entry)")
-		} else if last.FundingRate != 0 {
-			fundingNote = mutedStyle.Render(fmt.Sprintf("Funding OK (%.4f%%)", last.FundingRate*100))
-		}
+		// Funding — DISABILITATO come veto (solo costo, su richiesta utente)
+		fundingNote := mutedStyle.Render(fmt.Sprintf("Funding %.4f%% (solo costo, non blocca)", last.FundingRate*100))
 		content = priceBox + "\n\n" +
 			lipgloss.JoinHorizontal(lipgloss.Top, leftCol, "   ", rightCol) + "\n\n" +
 			fundingNote + "\n" +
@@ -366,12 +360,10 @@ func (m LiveModel) viewLiveSignals() string {
 			mutedStyle.Render("VolRegime:"), params.VolRegime,
 			mutedStyle.Render("FundingZ:"), params.FundingZ,
 		)
-		// colora FundingZ se veto
+		// FundingZ ora solo info (veto disabilitato)
 		fundingZStr := fmt.Sprintf("%.2f", params.FundingZ)
-		if !math.IsNaN(params.FundingZ) && math.Abs(params.FundingZ) > 2.8 {
-			fundingZStr = errorStyle.Render(fundingZStr+" VETO")
-		} else if !math.IsNaN(params.FundingZ) {
-			fundingZStr = successStyle.Render(fundingZStr+" OK")
+		if !math.IsNaN(params.FundingZ) {
+			fundingZStr = mutedStyle.Render(fundingZStr+" (solo costo)")
 		}
 		// override FundingZ line with color
 		// Donchian
@@ -404,11 +396,9 @@ func (m LiveModel) viewLiveSignals() string {
 		) + "\n")
 		b.WriteString(mutedStyle.Render(fmt.Sprintf("Don55: %.0f / %.0f  Don20: %.0f / %.0f  OI Δ %.2f%%  Vol %.1fx",
 			donH55, donL55, donH20, donL20, params.OIDelta*100, bars[len(bars)-1].Volume/(params.VolumeSMA+1))) + "\n")
-		b.WriteString(mutedStyle.Render(fmt.Sprintf("FundingZ %s %s  ADX %.1f  SMA200 %.0f",
-			fundingZStr,
-			map[bool]string{true: warnStyle.Render("(VETO attivo → skip)"), false: ""}[!math.IsNaN(params.FundingZ) && math.Abs(params.FundingZ) > 2.8],
-			params.ADX, params.SMA200)) + "\n")
-		b.WriteString(mutedStyle.Render("Funding veto = funding |z|>2.8 → skip entry (mercato iper-affollato, pagheresti funding alto)"))
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("FundingZ %s  ADX %.1f  SMA200 %.0f",
+			fundingZStr, params.ADX, params.SMA200)) + "\n")
+		b.WriteString(mutedStyle.Render("Funding = solo costo (veto DISABILITATO su richiesta)"))
 	}
 	b.WriteString("\n" + mutedStyle.Render(fmt.Sprintf("Variant: %s • %s", m.variant, m.bot.GetStratName())))
 	return cardStyle.Width(w + 4).Height(14).Render(b.String())
