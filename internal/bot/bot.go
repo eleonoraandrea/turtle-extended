@@ -192,6 +192,65 @@ func (b *Bot) GetLastSignal() strategy.Signal {
 	return b.lastSignal
 }
 
+func (b *Bot) GetLastRiskPct() float64 {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	// last risk from sizing log or from lastSignal meta
+	if b.lastSignal.Meta != nil {
+		if v, ok := b.lastSignal.Meta["riskPct"]; ok {
+			return v
+		}
+	}
+	return 2.0
+}
+
+// LastParams exposes all real-time indicator values for TUI
+type LastParams struct {
+	ATR        float64
+	ADX        float64
+	EMA50      float64
+	EMA200     float64
+	SMA200     float64
+	Don20H     float64
+	Don20L     float64
+	Don55H     float64
+	Don55L     float64
+	VolRegime  float64
+	FundingZ   float64
+	OIDelta    float64
+	VolumeSMA  float64
+	SMA200Val  float64
+}
+
+func (b *Bot) GetLastParams() LastParams {
+	bars := b.GetBars()
+	if len(bars) < 210 {
+		return LastParams{}
+	}
+	c := b.strat.Prepare(bars)
+	i := len(bars) - 1
+	oidelta := 0.0
+	if i > 0 && c.OI[i] != 0 && c.OI[i-1] != 0 && !math.IsNaN(c.OI[i]) && !math.IsNaN(c.OI[i-1]) {
+		oidelta = (c.OI[i] - c.OI[i-1]) / c.OI[i-1]
+	}
+	return LastParams{
+		ATR:       c.ATR[i],
+		ADX:       c.ADX[i],
+		EMA50:     c.EMA50[i],
+		EMA200:    c.EMA200[i],
+		SMA200:    c.SMA200[i],
+		Don20H:    c.Don20H[i],
+		Don20L:    c.Don20L[i],
+		Don55H:    c.Don55H[i],
+		Don55L:    c.Don55L[i],
+		VolRegime: c.VolRegime[i],
+		FundingZ:  c.FundingZ[i],
+		OIDelta:   oidelta,
+		VolumeSMA: c.VolumeSMA[i],
+		SMA200Val: c.SMA200[i],
+	}
+}
+
 func (b *Bot) IsPaper() bool { return b.paper }
 func (b *Bot) IsDryRun() bool {
 	b.mu.RLock()

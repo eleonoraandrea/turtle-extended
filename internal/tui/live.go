@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/guptarohit/asciigraph"
 
 	"github.com/atps/atps/internal/bot"
 	"github.com/atps/atps/internal/config"
@@ -239,45 +239,59 @@ func (m LiveModel) viewLiveHeader() string {
 func (m LiveModel) viewLiveMarket() string {
 	bars := m.bot.GetBars()
 	w := 52
-	h := 10
 	content := ""
-	if len(bars) > 10 {
-		closes := make([]float64, 0, 60)
-		start := len(bars) - 60
-		if start < 0 {
-			start = 0
-		}
-		for i := start; i < len(bars); i++ {
-			closes = append(closes, bars[i].Close)
-		}
-		plot := asciigraph.Plot(closes,
-			asciigraph.Height(h),
-			asciigraph.Width(w-4),
-			asciigraph.Caption(fmt.Sprintf("%s %s — last %.2f (4h)", m.symbol, m.interval, closes[len(closes)-1])),
-			asciigraph.Precision(0),
-		)
-		content = mutedStyle.Render(plot)
-		content += "\n" + mutedStyle.Render(fmt.Sprintf("Bars: %d  •  %s → %s  •  Vol regime: %.0f  •  Funding z: %s",
-			len(bars), bars[0].Time.Format("06-01-02"), bars[len(bars)-1].Time.Format("06-01-02"),
-			func() float64 {
-				if len(bars) > 0 {
-					// quick vol regime approx via last ATR percentile
-					return 50
-				}
-				return 0
-			}(),
-			func() string {
-				sig := m.bot.GetLastSignal()
-				if sig.Reason != "" {
-					return sig.Reason
-				}
-				return "—"
-			}(),
-		))
+	if len(bars) == 0 {
+		content = mutedStyle.Render("Warmup — caricamento barre Binance...") + "\n" +
+			mutedStyle.Render("Attesa 500 barre per warmup 200 SMA")
 	} else {
-		content = mutedStyle.Render("Warmup — caricamento barre Binance...")
+		last := bars[len(bars)-1]
+		prev := bars[len(bars)-1]
+		if len(bars) > 1 {
+			prev = bars[len(bars)-2]
+		}
+		chg := 0.0
+		if prev.Close > 0 {
+			chg = (last.Close - prev.Close) / prev.Close * 100
+		}
+		chgStr := fmt.Sprintf("%+.2f%%", chg)
+		chgStyle := lipgloss.NewStyle().Foreground(greenCol).Bold(true)
+		if chg < 0 {
+			chgStyle = lipgloss.NewStyle().Foreground(redCol).Bold(true)
+		}
+		priceStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#F8FAFC")).Bold(true).Background(lipgloss.Color("#1E293B")).Padding(0, 1).Margin(0, 1)
+		// Big price
+		priceBox := priceStyle.Render(fmt.Sprintf("$ %.2f  %s", last.Close, chgStyle.Render(chgStr)))
+		// Market details in two columns
+		leftCol := fmt.Sprintf(
+			"%s %s\n%s %.2f\n%s %.2f\n%s %.2f\n%s %.0f",
+			mutedStyle.Render("Symbol:"), last.Time.Format("15:04:05"),
+			mutedStyle.Render("Open:"), last.Open,
+			mutedStyle.Render("High:"), last.High,
+			mutedStyle.Render("Low:"), last.Low,
+			mutedStyle.Render("Volume:"), last.Volume,
+		)
+		rightCol := fmt.Sprintf(
+			"%s %d\n%s %.2f\n%s %s\n%s %.4f\n%s %.0f",
+			mutedStyle.Render("Bars:"), len(bars),
+			mutedStyle.Render("Trades:"), float64(last.Trades),
+			mutedStyle.Render("Funding:"), fmt.Sprintf("%.4f%%", last.FundingRate*100),
+			mutedStyle.Render("Mark:"), last.MarkPrice,
+			mutedStyle.Render("QuoteVol:"), last.QuoteVolume,
+		)
+		// Funding veto explanation
+		sig := m.bot.GetLastSignal()
+		fundingNote := ""
+		if strings.Contains(sig.Reason, "funding veto") {
+			fundingNote = errorStyle.Render("⛔ FUNDING VETO") + " " + mutedStyle.Render("(funding |z|>2.8 → mercato iper-affollato, skip entry)")
+		} else if last.FundingRate != 0 {
+			fundingNote = mutedStyle.Render(fmt.Sprintf("Funding OK (%.4f%%)", last.FundingRate*100))
+		}
+		content = priceBox + "\n\n" +
+			lipgloss.JoinHorizontal(lipgloss.Top, leftCol, "   ", rightCol) + "\n\n" +
+			fundingNote + "\n" +
+			mutedStyle.Render(fmt.Sprintf("Range: %s → %s  •  Interval: %s", bars[0].Time.Format("06-01-02"), last.Time.Format("06-01-02 15:04"), m.interval))
 	}
-	return cardStyle.Width(w + 4).Height(14).Render(titleStyle.Render("▣ MERCATO — Binance klines") + "\n" + content)
+	return cardStyle.Width(w + 4).Height(14).Render(titleStyle.Render("▣ MERCATO — Prezzo real-time (no grafico)") + "\n" + content)
 }
 
 func (m LiveModel) viewLivePositions() string {
@@ -320,9 +334,10 @@ func (m LiveModel) viewLivePositions() string {
 
 func (m LiveModel) viewLiveSignals() string {
 	sig := m.bot.GetLastSignal()
+	bars := m.bot.GetBars()
 	w := 52
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("◇ SEGNALE — Strategy") + "\n")
+	b.WriteString(titleStyle.Render("◇ PARAMETRI — tutti i filtri real-time") + "\n")
 	sideStr := "HOLD"
 	sideColor := mutedStyle
 	if sig.Side == 1 {
@@ -333,20 +348,70 @@ func (m LiveModel) viewLiveSignals() string {
 		sideColor = badgeShortStyle
 	}
 	b.WriteString(sideColor.Render(fmt.Sprintf("▶ %s", sideStr)) + "  ")
-	b.WriteString(mutedStyle.Render(fmt.Sprintf("(%.2f)", sig.Strength)) + "\n")
+	b.WriteString(mutedStyle.Render(fmt.Sprintf("Strength %.2f", sig.Strength)) + "  ")
 	b.WriteString(mutedStyle.Render("Reason: ") + sig.Reason + "\n")
 	if sig.StopPrice != 0 {
-		b.WriteString(mutedStyle.Render(fmt.Sprintf("Stop: %.2f  ", sig.StopPrice)))
-		if sig.Side == 1 {
-			b.WriteString(mutedStyle.Render(fmt.Sprintf("Risk: %.2f%%", 2.0)))
-		}
-		b.WriteString("\n")
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("Stop: %.2f  Risk: %.2f%%", sig.StopPrice, m.bot.GetLastRiskPct())) + "\n")
 	}
-	// risk preview
-	// show last sizing
-	b.WriteString("\n" + mutedStyle.Render("Ultimo sizing: risk 2% max, qty = (equity×risk%)/|entry-stop|"))
-	b.WriteString("\n" + mutedStyle.Render(fmt.Sprintf("Variant: %s  •  %s", m.variant, m.bot.GetStratName())))
-	return cardStyle.Width(w + 4).Height(10).Render(b.String())
+	// Tutti i parametri real-time (da bot.GetLastParams)
+	if len(bars) > 0 {
+		// Usa bot helper per ultimi indicatori
+		params := m.bot.GetLastParams()
+		// Mostra in griglia 2 colonne
+		col1 := fmt.Sprintf(
+			"%s %.2f (%.2f%%)\n%s %.2f\n%s %.2f\n%s %.0f\n%s %.2f",
+			mutedStyle.Render("ATR 20:"), params.ATR, params.ATR/bars[len(bars)-1].Close*100,
+			mutedStyle.Render("ADX 14:"), params.ADX,
+			mutedStyle.Render("EMA50:"), params.EMA50,
+			mutedStyle.Render("VolRegime:"), params.VolRegime,
+			mutedStyle.Render("FundingZ:"), params.FundingZ,
+		)
+		// colora FundingZ se veto
+		fundingZStr := fmt.Sprintf("%.2f", params.FundingZ)
+		if !math.IsNaN(params.FundingZ) && math.Abs(params.FundingZ) > 2.8 {
+			fundingZStr = errorStyle.Render(fundingZStr+" VETO")
+		} else if !math.IsNaN(params.FundingZ) {
+			fundingZStr = successStyle.Render(fundingZStr+" OK")
+		}
+		// override FundingZ line with color
+		// Donchian
+		donH55 := params.Don55H
+		donL55 := params.Don55L
+		donH20 := params.Don20H
+		donL20 := params.Don20L
+		col2 := fmt.Sprintf(
+			"%s %.2f\n%s %.2f\n%s %.2f\n%s %.2f\n%s %s",
+			mutedStyle.Render("SMA200:"), params.SMA200,
+			mutedStyle.Render("EMA200:"), params.EMA200,
+			mutedStyle.Render("Don55 H/L:"), donH55, // will be formatted below
+			mutedStyle.Render("Don20 H/L:"), donH20,
+			mutedStyle.Render("OI Δ:"), fmt.Sprintf("%.2f%%", params.OIDelta*100),
+		)
+		// More precise Donchian + volume
+		donStr := fmt.Sprintf("%s %.0f/%.0f\n%s %.0f/%.0f\n%s %.1fx\n%s %.0f",
+			mutedStyle.Render("Don55:"), donH55, donL55,
+			mutedStyle.Render("Don20:"), donH20, donL20,
+			mutedStyle.Render("Vol mult:"), bars[len(bars)-1].Volume / (params.VolumeSMA+1),
+			mutedStyle.Render("FundingZ:"), params.FundingZ,
+		)
+		_ = donStr
+		// Instead, show compact table
+		b.WriteString("\n")
+		// Use lipgloss grid via strings
+		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top,
+			lipgloss.NewStyle().Width(26).Render(col1),
+			lipgloss.NewStyle().Width(26).Render(col2),
+		) + "\n")
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("Don55: %.0f / %.0f  Don20: %.0f / %.0f  OI Δ %.2f%%  Vol %.1fx",
+			donH55, donL55, donH20, donL20, params.OIDelta*100, bars[len(bars)-1].Volume/(params.VolumeSMA+1))) + "\n")
+		b.WriteString(mutedStyle.Render(fmt.Sprintf("FundingZ %s %s  ADX %.1f  SMA200 %.0f",
+			fundingZStr,
+			map[bool]string{true: warnStyle.Render("(VETO attivo → skip)"), false: ""}[!math.IsNaN(params.FundingZ) && math.Abs(params.FundingZ) > 2.8],
+			params.ADX, params.SMA200)) + "\n")
+		b.WriteString(mutedStyle.Render("Funding veto = funding |z|>2.8 → skip entry (mercato iper-affollato, pagheresti funding alto)"))
+	}
+	b.WriteString("\n" + mutedStyle.Render(fmt.Sprintf("Variant: %s • %s", m.variant, m.bot.GetStratName())))
+	return cardStyle.Width(w + 4).Height(14).Render(b.String())
 }
 
 func (m LiveModel) viewLiveLogs() string {

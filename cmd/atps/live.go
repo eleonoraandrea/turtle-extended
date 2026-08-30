@@ -22,6 +22,7 @@ func cmdLive() *cobra.Command {
 	var testnet bool
 	var pollSec int
 	var orderlyAccount, orderlyKey, orderlySecret string
+	var capital float64
 
 	cmd := &cobra.Command{
 		Use:   "live",
@@ -59,6 +60,14 @@ Spec: docs/LIVE_EXECUTION_SPEC.md — TUI: 'd' toggle dry-run live.
 			}
 			if interval == "" {
 				interval = cfg.General.Interval
+			}
+			// dry-run capital override (es. 10000 USD)
+			if capital > 0 {
+				cfg.General.InitialCapital = capital
+			}
+			// also allow --capital via env/config dry-run
+			if cfg.General.InitialCapital == 0 {
+				cfg.General.InitialCapital = 10000
 			}
 			// --- dry-run logic (NUOVO, esplicito) ---
 			// --dry-run=true (default) → paper sempre, anche se --live presente senza conferma
@@ -205,6 +214,7 @@ Spec: docs/LIVE_EXECUTION_SPEC.md — TUI: 'd' toggle dry-run live.
 	cmd.Flags().StringVar(&orderlyAccount, "orderly-account", "", "Orderly ACCOUNT_ID (alternativa a env ORDERLY_ACCOUNT_ID)")
 	cmd.Flags().StringVar(&orderlyKey, "orderly-key", "", "Orderly KEY (ed25519 pub, alternativa a env)")
 	cmd.Flags().StringVar(&orderlySecret, "orderly-secret", "", "Orderly SECRET base64 seed/priv (alternativa a env ORDERLY_SECRET)")
+	cmd.Flags().Float64Var(&capital, "capital", 0, "capitale iniziale dry-run in USD (es. 10000) — default da configs/default.yaml (10000)")
 
 	return cmd
 }

@@ -146,17 +146,32 @@ Solo se **tutti** sono verdi (walk-forward decay ≈1, perturb tutti profittevol
 
 > **Isolamento:** `internal/backtest` MAI importa `internal/execution` (verifica `go list -deps ./internal/backtest` = 0). Live compila solo con `-tags live`.
 
-### 6a) Paper trading (sicuro, default)
+### 6a) Paper trading (sicuro, default) — dry-run con capitale configurabile
 
-Simula ordini, nessun capitale reale, stessa logica risk:
+Simula ordini, nessun capitale reale, stessa logica risk. **Capitale dry-run configurabile** via `--capital` o `configs/default.yaml: general.initial_capital`:
 
 ```bash
-./atps live --symbol BTCUSDT --variant D --interval 4h --poll 30
-# TUI Live: Header equity+PnL, ▣ MERCATO asciigraph 60×8, ◆ POSIZIONI, ◇ SEGNALE, ▤ LOGS
-# Comandi TUI live: q esc, r tick manuale, p auto ON/OFF, ? help
+# Dry-run 10.000 USD (default da configs/default.yaml)
+./atps live --symbol BTCUSDT --variant D --interval 4h --poll 30 --capital 10000 --dry-run=true
+
+# Dry-run 25.000 USD per testare compounding più alto
+./atps live --symbol BTCUSDT --variant D --poll 30 --capital 25000
+
+# Dry-run usa sempre risk 2% max per |entry-stop| → qty = (equity×risk%)/|entry-stop|
+# → più equity = più qty (verificato: equity 10000 → qty 0.021, equity 25000 → qty 0.052)
+
+# TUI Live (dopo fix: prezzo + tutti i parametri real-time, NO grafico)
+# Header: equity + PnL, balance, strat, Orderly symbol, DRY-RUN/LIVE, last tick
+# ▣ MERCATO: Price $78826.40 +0.25% | Open/High/Low/Volume/Funding/OI | Funding veto spiegazione
+# ◆ POSIZIONI: Orderly GET /v1/positions con uPnL
+# ◇ PARAMETRI: ATR, ADX, EMA50/200, SMA200, Don55/20 H/L, VolRegime, FundingZ, OI Δ, Vol mult — tutti real-time
+# ▤ LOGS: viewport scrollabile con sizing log
+# Comandi TUI live: q esc, r tick manuale, p auto ON/OFF, d toggle dry-run (PAPER↔LIVE), ? help
 # Headless (server, no TTY): log su stdout
-timeout 60 ./atps live --poll 30 2>&1 | tail
+timeout 60 ./atps live --poll 30 --capital 10000 2>&1 | tail
 ```
+
+**Cosa vuol dire `funding veto`?** `fundingZ = (fundingRate - SMA30)/std30`. Se `|z|>2.8` il funding è estremo (mercato iper-affollato long, pagheresti funding alto) → filtro salta l’entry (`HOLD (D funding veto)`). È voluto per evitare di pagare funding da -0.1% ogni 8h su trend affollati. Disattivabile via `funding.filter: false` o alzando `funding_z_threshold` a 3.5.
 
 Poll log atteso (paper):
 ```
