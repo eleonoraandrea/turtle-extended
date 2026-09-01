@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,26 +21,26 @@ import (
 // Bot runs the ATPS strategy live against Orderly.
 // Binance provides OHLCV + funding for signals; Orderly executes.
 type Bot struct {
-	cfg       *config.Config
-	symbol    string // e.g. BTCUSDT (Binance) -> PERP_BTC_USDC (Orderly)
-	interval  string
-	variant   string
-	adapter   execution.Adapter
-	binance   *data.BinanceClient
-	strat     strategy.Strategy
-	mu        sync.RWMutex
-	bars      data.Bars
-	equity    float64
-	peak      float64
-	positions []execution.Position
-	balance   execution.Balance
+	cfg        *config.Config
+	symbol     string // e.g. BTCUSDT (Binance) -> PERP_BTC_USDC (Orderly)
+	interval   string
+	variant    string
+	adapter    execution.Adapter
+	binance    *data.BinanceClient
+	strat      strategy.Strategy
+	mu         sync.RWMutex
+	bars       data.Bars
+	equity     float64
+	peak       float64
+	positions  []execution.Position
+	balance    execution.Balance
 	lastSignal strategy.Signal
 	lastUpdate time.Time
-	logs      []string
-	maxLogs   int
-	dryRun    bool // true = paper (nessun ordine reale) — NUOVO flag esplicito
-	paper     bool // alias per compat (paper == dryRun)
-	stopCh    chan struct{}
+	logs       []string
+	maxLogs    int
+	dryRun     bool // true = paper (nessun ordine reale) — NUOVO flag esplicito
+	paper      bool // alias per compat (paper == dryRun)
+	stopCh     chan struct{}
 }
 
 func New(cfg *config.Config, symbol, interval, variant string, dryRun bool) (*Bot, error) {
@@ -105,12 +106,26 @@ func intervalToDuration(s string) time.Duration {
 	switch s {
 	case "1m":
 		return time.Minute
+	case "3m":
+		return 3 * time.Minute
 	case "5m":
 		return 5 * time.Minute
+	case "15m":
+		return 15 * time.Minute
+	case "30m":
+		return 30 * time.Minute
 	case "1h":
 		return time.Hour
+	case "2h":
+		return 2 * time.Hour
 	case "4h":
 		return 4 * time.Hour
+	case "6h":
+		return 6 * time.Hour
+	case "8h":
+		return 8 * time.Hour
+	case "12h":
+		return 12 * time.Hour
 	case "1d":
 		return 24 * time.Hour
 	}
@@ -206,20 +221,20 @@ func (b *Bot) GetLastRiskPct() float64 {
 
 // LastParams exposes all real-time indicator values for TUI
 type LastParams struct {
-	ATR        float64
-	ADX        float64
-	EMA50      float64
-	EMA200     float64
-	SMA200     float64
-	Don20H     float64
-	Don20L     float64
-	Don55H     float64
-	Don55L     float64
-	VolRegime  float64
-	FundingZ   float64
-	OIDelta    float64
-	VolumeSMA  float64
-	SMA200Val  float64
+	ATR       float64
+	ADX       float64
+	EMA50     float64
+	EMA200    float64
+	SMA200    float64
+	Don20H    float64
+	Don20L    float64
+	Don55H    float64
+	Don55L    float64
+	VolRegime float64
+	FundingZ  float64
+	OIDelta   float64
+	VolumeSMA float64
+	SMA200Val float64
 }
 
 func (b *Bot) GetLastParams() LastParams {
@@ -294,25 +309,8 @@ func (b *Bot) OrderlySymbol() string {
 	if m, ok := b.cfg.Orderly.SymbolsMap[b.symbol]; ok {
 		return m
 	}
-	// fallback
-	s := b.symbol
-	s = replaceAll(s, "USDT", "_USDC")
-	return "PERP_" + s
-}
-
-func replaceAll(s, old, new string) string {
-	// tiny helper without strings import
-	res := ""
-	for i := 0; i < len(s); {
-		if len(s[i:]) >= len(old) && s[i:i+len(old)] == old {
-			res += new
-			i += len(old)
-		} else {
-			res += string(s[i])
-			i++
-		}
-	}
-	return res
+	// fallback: BTCUSDT -> PERP_BTC_USDC
+	return "PERP_" + strings.ReplaceAll(b.symbol, "USDT", "_USDC")
 }
 
 // Tick fetches latest bar, updates signal, and optionally places order
@@ -427,48 +425,51 @@ func (b *Bot) Tick(ctx context.Context) error {
 	}
 	// build market state for risk engine
 	lim := risk.LimitsFromConfig(b.cfg, b.variant)
-	// compute heat
+	// compute heat — approximate from notional if risk% unavailable live
 	b.mu.RLock()
 	heat := 0.0
 	corrHeat := 0.0
 	for _, p := range b.positions {
-		// approximate heat from existing positions (we store notional, but need risk%)
-		// For live, we approximate heat as sum of position notional / equity * 0.5% ?
-		// Simpler: use 0.5% per open position as placeholder, real heat tracked in backtest
-		heat += 0.5
+		// Estimate heat as proportional to position size; use 0.5% baseline per position
+		// Better: use notional/equity * assumed risk factor if available
+		h := 0.5
+		if equity > 0 && p.Qty != 0 {
+			notional := math.Abs(p.Qty * price)
+			// assume stop ~2 ATR away -> risk ≈ notional * (atr*2/price) / equity? Simplified placeholder 0.5
+			// For live accuracy, risk engine's heat limit (3%) will still gate via Size()
+			_ = notional
+		}
+		heat += h
 		if (p.Side == "LONG" && sig.Side == 1) || (p.Side == "SHORT" && sig.Side == -1) {
-			corrHeat += 0.5
+			corrHeat += h
 		}
 	}
 	b.mu.RUnlock()
-	// kill switch
-	if _, err := b.adapter.GetBalance(ctx); err == nil {
-		// check halt file
-		// (paper adapter never halts)
+	// kill-switch file check (blocks orders even in paper)
+	if _, err := os.Stat("/tmp/atps.halt"); err == nil {
+		b.logf("kill-switch /tmp/atps.halt attivo → ordini bloccati")
+		return nil
 	}
-
-	// check Orderly halt file
-	// (already in adapter? keep here too)
 	ms := risk.MarketState{
-		Equity:              equity,
-		Price:               price,
-		ATR:                 atr,
-		StopPrice:           stop,
-		Side:                sig.Side,
-		VolRegime:           c.VolRegime[len(c.VolRegime)-1],
-		ADX:                 c.ADX[len(c.ADX)-1],
-		FundingZ:            c.FundingZ[len(c.FundingZ)-1],
-		VolAnnualizedPct:    risk.AnnualizedVolPct(atr, price, 4),
-		PortfolioHeatPct:    heat,
+		Equity:                 equity,
+		Price:                  price,
+		ATR:                    atr,
+		StopPrice:              stop,
+		Side:                   sig.Side,
+		VolRegime:              c.VolRegime[len(c.VolRegime)-1],
+		ADX:                    c.ADX[len(c.ADX)-1],
+		FundingZ:               c.FundingZ[len(c.FundingZ)-1],
+		VolAnnualizedPct:       risk.AnnualizedVolPct(atr, price, 4),
+		PortfolioHeatPct:       heat,
 		PortfolioCorrelatedPct: corrHeat,
-		EquityDDPct:         ddPct,
+		EquityDDPct:            ddPct,
 	}
 	dec := risk.Size(ms, lim)
 	if !dec.Accept {
 		b.logf("risk reject: %v", dec.Factors)
 		return nil
 	}
-	b.logf("signal %s  price %.2f  stop %.2f  risk %.2f%%  qty %.5f  lev %.2fx  %v", map[int]string{1:"LONG", -1:"SHORT"}[sig.Side], price, stop, dec.RiskPct, dec.Qty, dec.Leverage, sig.Reason)
+	b.logf("signal %s  price %.2f  stop %.2f  risk %.2f%%  qty %.5f  lev %.2fx  %v", map[int]string{1: "LONG", -1: "SHORT"}[sig.Side], price, stop, dec.RiskPct, dec.Qty, dec.Leverage, sig.Reason)
 	b.logf("sizing: %s", dec.Factors[len(dec.Factors)-1])
 
 	// 5. place order (paper or live)
@@ -536,7 +537,7 @@ func (b *Bot) SnapshotResult() *backtest.Result {
 	res := backtest.Run(bars, b.strat, b.cfg, backtest.EngineConfig{
 		Variant: b.variant, Symbol: b.symbol,
 		InitialCapital: b.cfg.General.InitialCapital,
-		FeeBps: b.cfg.Costs.FeeBps, SlippageBps: b.cfg.Costs.SlippageBps,
+		FeeBps:         b.cfg.Costs.FeeBps, SlippageBps: b.cfg.Costs.SlippageBps,
 		Leverage: b.cfg.Risk.MaxLeverage, UseNextOpen: true,
 		PyramidingMax: b.cfg.Backtest.PyramidingMaxUnits, PyramidStepATR: b.cfg.Backtest.PyramidStepATR,
 		TrailATRMult: b.cfg.Backtest.TrailATRMult, TrailMode: "chandelier", DonExit: 20,

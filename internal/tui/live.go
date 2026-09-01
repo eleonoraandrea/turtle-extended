@@ -20,20 +20,20 @@ type liveTickMsg time.Time
 type liveBotMsg struct{ err error }
 
 type LiveModel struct {
-	cfg     *config.Config
-	bot     *bot.Bot
-	symbol  string
-	variant string
+	cfg      *config.Config
+	bot      *bot.Bot
+	symbol   string
+	variant  string
 	interval string
-	paper   bool
+	paper    bool
 
 	width, height int
-	spinner spinner.Model
-	viewport viewport.Model
-	ready   bool
-	status  string
-	autoRefresh bool
-	showHelp bool
+	spinner       spinner.Model
+	viewport      viewport.Model
+	ready         bool
+	status        string
+	autoRefresh   bool
+	showHelp      bool
 }
 
 func NewLive(cfg *config.Config, b *bot.Bot, symbol, variant, interval string, paper bool) LiveModel {
@@ -43,16 +43,16 @@ func NewLive(cfg *config.Config, b *bot.Bot, symbol, variant, interval string, p
 	vp := viewport.New(80, 12)
 	vp.Style = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cardBd)
 	return LiveModel{
-		cfg: cfg,
-		bot: b,
-		symbol: symbol,
-		variant: variant,
-		interval: interval,
-		paper: paper,
-		spinner: s,
-		viewport: vp,
+		cfg:         cfg,
+		bot:         b,
+		symbol:      symbol,
+		variant:     variant,
+		interval:    interval,
+		paper:       paper,
+		spinner:     s,
+		viewport:    vp,
 		autoRefresh: true,
-		status: "Connesso — polling Binance klines + Orderly",
+		status:      "Connesso — polling Binance klines + Orderly",
 	}
 }
 
@@ -363,7 +363,7 @@ func (m LiveModel) viewLiveSignals() string {
 		// FundingZ ora solo info (veto disabilitato)
 		fundingZStr := fmt.Sprintf("%.2f", params.FundingZ)
 		if !math.IsNaN(params.FundingZ) {
-			fundingZStr = mutedStyle.Render(fundingZStr+" (solo costo)")
+			fundingZStr = mutedStyle.Render(fundingZStr + " (solo costo)")
 		}
 		// override FundingZ line with color
 		// Donchian
@@ -383,7 +383,7 @@ func (m LiveModel) viewLiveSignals() string {
 		donStr := fmt.Sprintf("%s %.0f/%.0f\n%s %.0f/%.0f\n%s %.1fx\n%s %.0f",
 			mutedStyle.Render("Don55:"), donH55, donL55,
 			mutedStyle.Render("Don20:"), donH20, donL20,
-			mutedStyle.Render("Vol mult:"), bars[len(bars)-1].Volume / (params.VolumeSMA+1),
+			mutedStyle.Render("Vol mult:"), bars[len(bars)-1].Volume/(params.VolumeSMA+1),
 			mutedStyle.Render("FundingZ:"), params.FundingZ,
 		)
 		_ = donStr

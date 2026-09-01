@@ -35,12 +35,12 @@ const (
 
 // messages
 type backtestDoneMsg struct {
-	symbol string
+	symbol  string
 	variant string
-	result *backtest.Result
-	stats  metrics.Stats
-	path   string
-	err    error
+	result  *backtest.Result
+	stats   metrics.Stats
+	path    string
+	err     error
 }
 
 type compareDoneMsg struct {
@@ -58,7 +58,7 @@ type Model struct {
 	state state
 	// selection
 	symbols   []string
-	variants  []struct{Key, Name, Desc string}
+	variants  []struct{ Key, Name, Desc string }
 	intervals []string
 	symIdx    int
 	varIdx    int
@@ -94,17 +94,24 @@ func New(cfg *config.Config, cfgPath string) Model {
 	s.Style = spinnerStyle
 
 	symbols := cfg.General.Symbols
-	if len(symbols)==0 { symbols = []string{"BTCUSDT","ETHUSDT","SOLUSDT"} }
-	variants := []struct{Key,Name,Desc string}{
+	if len(symbols) == 0 {
+		symbols = []string{"BTCUSDT", "ETHUSDT", "SOLUSDT"}
+	}
+	variants := []struct{ Key, Name, Desc string }{
 		{"A", "Classic Turtle", "S1 20/55, 2ATR stop, SMA200"},
 		{"B", "Regime Filter", "+ ADX, EMA 50/200, vol regime"},
 		{"C", "Derivatives", "+ funding Z, OI Δ, volume"},
 		{"D", "Full Adaptive", "20/55/100 adapt, vol-target, chandelier"},
 	}
-	intervals := []string{"1h","4h","1d"}
+	intervals := []string{"1h", "4h", "1d"}
 	// find current interval index
-	intIdx:= 1 // default 4h
-	for i,v:=range intervals{ if v==cfg.General.Interval{intIdx=i; break}}
+	intIdx := 1 // default 4h
+	for i, v := range intervals {
+		if v == cfg.General.Interval {
+			intIdx = i
+			break
+		}
+	}
 
 	vp := viewport.New(80, 20)
 	vp.Style = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cardBd)
@@ -139,50 +146,62 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
-			if m.state==stateResult || m.state==stateCompare {
+			if m.state == stateResult || m.state == stateCompare {
 				m.state = stateMenu
 				m.errMsg = ""
 				return m, nil
 			}
 			return m, tea.Quit
 		case "tab", "right", "l":
-			if m.state==stateMenu {
+			if m.state == stateMenu {
 				m.focus = (m.focus + 1) % 4
 				return m, nil
 			}
 		case "shift+tab", "left", "h":
-			if m.state==stateMenu {
+			if m.state == stateMenu {
 				m.focus = (m.focus - 1 + 4) % 4
-				if m.focus<0{m.focus=3}
+				if m.focus < 0 {
+					m.focus = 3
+				}
 				return m, nil
 			}
 		case "up", "k":
-			if m.state==stateMenu {
+			if m.state == stateMenu {
 				switch m.focus {
-				case 0: m.symIdx = (m.symIdx -1 + len(m.symbols)) % len(m.symbols)
-				case 1: m.varIdx = (m.varIdx -1 + len(m.variants)) % len(m.variants)
-				case 2: m.intIdx = (m.intIdx -1 + len(m.intervals)) % len(m.intervals)
-				case 3: m.actionIdx = (m.actionIdx -1 + 4) % 4
-					if m.actionIdx<0{m.actionIdx=3}
+				case 0:
+					m.symIdx = (m.symIdx - 1 + len(m.symbols)) % len(m.symbols)
+				case 1:
+					m.varIdx = (m.varIdx - 1 + len(m.variants)) % len(m.variants)
+				case 2:
+					m.intIdx = (m.intIdx - 1 + len(m.intervals)) % len(m.intervals)
+				case 3:
+					m.actionIdx = (m.actionIdx - 1 + 4) % 4
+					if m.actionIdx < 0 {
+						m.actionIdx = 3
+					}
 				}
-			} else if m.state==stateResult {
+			} else if m.state == stateResult {
 				m.viewport.LineUp(1)
 			}
 			return m, nil
 		case "down", "j":
-			if m.state==stateMenu {
+			if m.state == stateMenu {
 				switch m.focus {
-				case 0: m.symIdx = (m.symIdx +1) % len(m.symbols)
-				case 1: m.varIdx = (m.varIdx +1) % len(m.variants)
-				case 2: m.intIdx = (m.intIdx +1) % len(m.intervals)
-				case 3: m.actionIdx = (m.actionIdx +1) % 4
+				case 0:
+					m.symIdx = (m.symIdx + 1) % len(m.symbols)
+				case 1:
+					m.varIdx = (m.varIdx + 1) % len(m.variants)
+				case 2:
+					m.intIdx = (m.intIdx + 1) % len(m.intervals)
+				case 3:
+					m.actionIdx = (m.actionIdx + 1) % 4
 				}
-			} else if m.state==stateResult {
+			} else if m.state == stateResult {
 				m.viewport.LineDown(1)
 			}
 			return m, nil
 		case "enter", " ":
-			if m.state==stateMenu && m.focus==3 {
+			if m.state == stateMenu && m.focus == 3 {
 				switch m.actionIdx {
 				case 0: // Run backtest
 					m.state = stateRunning
@@ -201,53 +220,59 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.state = stateHelp
 					return m, nil
 				}
-			} else if m.state==stateMenu && m.focus!=3 {
+			} else if m.state == stateMenu && m.focus != 3 {
 				// quick run on enter on selector
 				m.state = stateRunning
 				return m, tea.Batch(m.spinner.Tick, m.runBacktestCmd(m.symbols[m.symIdx], m.variants[m.varIdx].Key, m.intervals[m.intIdx]))
-			} else if m.state==stateHelp {
+			} else if m.state == stateHelp {
 				m.state = stateMenu
 				return m, nil
-			} else if m.state==stateResult {
+			} else if m.state == stateResult {
 				// open report?
-				if m.reportPath!="" {
+				if m.reportPath != "" {
 					m.statusMsg = fmt.Sprintf("Report: %s", m.reportPath)
 				}
 				return m, nil
 			}
 		case "r":
-			if m.state==stateMenu {
+			if m.state == stateMenu {
 				m.state = stateRunning
 				return m, tea.Batch(m.spinner.Tick, m.runBacktestCmd(m.symbols[m.symIdx], m.variants[m.varIdx].Key, m.intervals[m.intIdx]))
 			}
-			if m.state==stateResult {
+			if m.state == stateResult {
 				// re-run
 				m.state = stateRunning
 				return m, tea.Batch(m.spinner.Tick, m.runBacktestCmd(m.symbols[m.symIdx], m.variants[m.varIdx].Key, m.intervals[m.intIdx]))
 			}
 		case "c":
-			if m.state==stateMenu {
+			if m.state == stateMenu {
 				m.state = stateRunning
 				return m, tea.Batch(m.spinner.Tick, m.runCompareCmd())
 			}
 		case "o":
-			if m.state==stateResult && m.reportPath!="" {
+			if m.state == stateResult && m.reportPath != "" {
 				// try to open with xdg-open
 				// non-blocking, just set status
 				m.statusMsg = fmt.Sprintf("Apri: xdg-open %s  (o open in browser)", m.reportPath)
 				return m, nil
 			}
 		case "esc":
-			if m.state==stateResult || m.state==stateCompare || m.state==stateHelp {
+			if m.state == stateResult || m.state == stateCompare || m.state == stateHelp {
 				m.state = stateMenu
 				return m, nil
 			}
 		case "?":
-			if m.state==stateMenu { m.state=stateHelp; return m,nil }
-			if m.state==stateHelp { m.state=stateMenu; return m,nil}
+			if m.state == stateMenu {
+				m.state = stateHelp
+				return m, nil
+			}
+			if m.state == stateHelp {
+				m.state = stateMenu
+				return m, nil
+			}
 		}
 		// passthrough to viewport when result
-		if m.state==stateResult {
+		if m.state == stateResult {
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
@@ -256,7 +281,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
-		if m.state==stateRunning {
+		if m.state == stateRunning {
 			return m, cmd
 		}
 		return m, nil
@@ -292,7 +317,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// propagate viewport update
-	if m.state==stateResult {
+	if m.state == stateResult {
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
 		return m, cmd
@@ -302,7 +327,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	if m.width==0 { return "Caricamento TUI…" }
+	if m.width == 0 {
+		return "Caricamento TUI…"
+	}
 	switch m.state {
 	case stateMenu:
 		return m.viewMenu()
@@ -346,7 +373,9 @@ func (m Model) viewMenu() string {
 	bottomRow := actionPanel
 	statusBar := helpStyle.Render("Tab/Shift-Tab: focus  ↑/↓: seleziona  Enter: esegui  r: Run  c: Compare  ?: Help  q: Esci") +
 		"   " + mutedStyle.Render(m.statusMsg)
-	if m.errMsg!="" { statusBar += "  " + errorStyle.Render(m.errMsg) }
+	if m.errMsg != "" {
+		statusBar += "  " + errorStyle.Render(m.errMsg)
+	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left, header, "", topRow, "", bottomRow, "", statusBar)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content,
@@ -356,33 +385,39 @@ func (m Model) viewMenu() string {
 }
 
 func (m Model) renderSymbols() string {
-	style := focusCard(m.focus==0)
+	style := focusCard(m.focus == 0)
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("▣ SIMBOLO") + "\n")
 	b.WriteString(mutedStyle.Render("Binance → Orderly") + "\n\n")
 	for i, s := range m.symbols {
 		cursor := "  "
 		itemStyle := normalItemStyle
-		if i==m.symIdx {
+		if i == m.symIdx {
 			cursor = "▶ "
-			if m.focus==0 {
+			if m.focus == 0 {
 				itemStyle = selectedStyle
 			} else {
-				itemStyle = lipgloss.NewStyle().Foreground(accentCol).Bold(true).Padding(0,1)
+				itemStyle = lipgloss.NewStyle().Foreground(accentCol).Bold(true).Padding(0, 1)
 			}
 		}
 		icon := "●"
 		switch s {
-		case "BTCUSDT": icon = "₿"
-		case "ETHUSDT": icon = "♦"
-		case "SOLUSDT": icon = "◎"
+		case "BTCUSDT":
+			icon = "₿"
+		case "ETHUSDT":
+			icon = "♦"
+		case "SOLUSDT":
+			icon = "◎"
 		}
 		line := fmt.Sprintf("%s%s %s", cursor, icon, s)
 		b.WriteString(itemStyle.Render(line) + "\n")
 		// orderly mapping
-		if i==m.symIdx {
+		if i == m.symIdx {
 			ord := m.cfg.Orderly.SymbolsMap[s]
-			if ord=="" { ord = strings.Replace(s,"USDT","_USDC",1); ord="PERP_"+ord }
+			if ord == "" {
+				ord = strings.Replace(s, "USDT", "_USDC", 1)
+				ord = "PERP_" + ord
+			}
 			b.WriteString(mutedStyle.Render("  ↳ "+ord) + "\n")
 		}
 	}
@@ -391,19 +426,23 @@ func (m Model) renderSymbols() string {
 }
 
 func (m Model) renderVariants() string {
-	style := focusCard(m.focus==1)
+	style := focusCard(m.focus == 1)
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("◆ VARIANTE") + "\n")
 	b.WriteString(mutedStyle.Render("Turtle A → D full") + "\n\n")
 	for i, v := range m.variants {
 		cursor := "  "
 		itemStyle := normalItemStyle
-		if i==m.varIdx {
+		if i == m.varIdx {
 			cursor = "▶ "
-			if m.focus==1 { itemStyle = selectedStyle } else { itemStyle = lipgloss.NewStyle().Foreground(purpleCol).Bold(true).Padding(0,1)}
+			if m.focus == 1 {
+				itemStyle = selectedStyle
+			} else {
+				itemStyle = lipgloss.NewStyle().Foreground(purpleCol).Bold(true).Padding(0, 1)
+			}
 		}
 		b.WriteString(itemStyle.Render(fmt.Sprintf("%s[%s] %s", cursor, v.Key, v.Name)) + "\n")
-		if i==m.varIdx {
+		if i == m.varIdx {
 			b.WriteString(mutedStyle.Render("  "+v.Desc) + "\n")
 		}
 	}
@@ -412,16 +451,20 @@ func (m Model) renderVariants() string {
 }
 
 func (m Model) renderIntervals() string {
-	style := focusCard(m.focus==2)
+	style := focusCard(m.focus == 2)
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("◇ TIMEFRAME") + "\n")
 	b.WriteString(mutedStyle.Render("OHLCV interval") + "\n\n")
 	for i, iv := range m.intervals {
 		cursor := "  "
 		itemStyle := normalItemStyle
-		if i==m.intIdx {
+		if i == m.intIdx {
 			cursor = "▶ "
-			if m.focus==2 { itemStyle = selectedStyle } else { itemStyle = lipgloss.NewStyle().Foreground(accent2).Bold(true).Padding(0,1)}
+			if m.focus == 2 {
+				itemStyle = selectedStyle
+			} else {
+				itemStyle = lipgloss.NewStyle().Foreground(accent2).Bold(true).Padding(0, 1)
+			}
 		}
 		b.WriteString(itemStyle.Render(fmt.Sprintf("%s%s", cursor, iv)) + "\n")
 	}
@@ -434,19 +477,23 @@ func (m Model) renderIntervals() string {
 }
 
 func (m Model) renderActions() string {
-	style := focusCard(m.focus==3)
+	style := focusCard(m.focus == 3)
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("▶ AZIONI") + "  " + mutedStyle.Render("Enter per eseguire") + "\n\n")
-	actions := []struct{Key, Label, Hint string}{
+	actions := []struct{ Key, Label, Hint string }{
 		{"r", "▶ Run Backtest", "HTML dettagliato"},
 		{"c", "▣ Compare A/B/C/D", "ranking Sharpe"},
 		{"w", "◈ Walk-Forward", "8 folds (todo)"},
 		{"?", "？ Help", "guida rapida"},
 	}
 	for i, a := range actions {
-		isSel := i==m.actionIdx
+		isSel := i == m.actionIdx
 		styleBtn := buttonInactiveStyle
-		if isSel && m.focus==3 { styleBtn = buttonFocusStyle } else if isSel { styleBtn = buttonStyle }
+		if isSel && m.focus == 3 {
+			styleBtn = buttonFocusStyle
+		} else if isSel {
+			styleBtn = buttonStyle
+		}
 		// highlight key
 		label := fmt.Sprintf("[%s] %s — %s", a.Key, a.Label, a.Hint)
 		b.WriteString(styleBtn.Render(label) + "\n")
@@ -457,7 +504,7 @@ func (m Model) renderActions() string {
 
 func (m Model) viewRunning() string {
 	header := headerStyle.Render(titleStyle.Render("⏳ ESECUZIONE IN CORSO") + "  " + m.spinner.View() + "  " + mutedStyle.Render(m.statusMsg))
-	body := cardStyle.Width(m.width-6).Height(10).Render(
+	body := cardStyle.Width(m.width - 6).Height(10).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
 			spinnerStyle.Render(m.spinner.View()+"  Elaborazione backtest…"),
 			"",
@@ -473,16 +520,20 @@ func (m Model) viewRunning() string {
 }
 
 func (m Model) viewResult() string {
-	if m.result==nil { return m.viewMenu() }
+	if m.result == nil {
+		return m.viewMenu()
+	}
 	// KPI row
 	retCol := greenCol
-	if m.stats.ReturnPct < 0 { retCol = redCol }
+	if m.stats.ReturnPct < 0 {
+		retCol = redCol
+	}
 	retStyle := lipgloss.NewStyle().Foreground(retCol).Bold(true).Align(lipgloss.Center).Width(18)
 
-	kpi1 := kpiCard("RETURN", fmt.Sprintf("%.2f%%", m.stats.ReturnPct), fmt.Sprintf("CAGR %.2f%% BH %.1f%%", m.stats.ReturnAnnual, m.stats.BuyHoldReturn), m.stats.ReturnPct>0)
-	kpi2 := kpiCard("SHARPE", fmt.Sprintf("%.2f", m.stats.Sharpe), fmt.Sprintf("Sort %.2f Cal %.2f", m.stats.Sortino, m.stats.Calmar), m.stats.Sharpe>1)
+	kpi1 := kpiCard("RETURN", fmt.Sprintf("%.2f%%", m.stats.ReturnPct), fmt.Sprintf("CAGR %.2f%% BH %.1f%%", m.stats.ReturnAnnual, m.stats.BuyHoldReturn), m.stats.ReturnPct > 0)
+	kpi2 := kpiCard("SHARPE", fmt.Sprintf("%.2f", m.stats.Sharpe), fmt.Sprintf("Sort %.2f Cal %.2f", m.stats.Sortino, m.stats.Calmar), m.stats.Sharpe > 1)
 	kpi3 := kpiCard("MAX DD", fmt.Sprintf("%.2f%%", m.stats.MaxDD), fmt.Sprintf("%d bars  Ulcer %.1f", m.stats.MaxDDDurationBars, m.stats.UlcerIndex), false)
-	kpi4 := kpiCard("PF / WIN", fmt.Sprintf("%.2f / %.1f%%", m.stats.ProfitFactor, m.stats.WinRate), fmt.Sprintf("%d trades  Exp %.0f%%", m.stats.Trades, m.stats.ExposurePct), m.stats.ProfitFactor>1.5)
+	kpi4 := kpiCard("PF / WIN", fmt.Sprintf("%.2f / %.1f%%", m.stats.ProfitFactor, m.stats.WinRate), fmt.Sprintf("%d trades  Exp %.0f%%", m.stats.Trades, m.stats.ExposurePct), m.stats.ProfitFactor > 1.5)
 
 	kpiRow := lipgloss.JoinHorizontal(lipgloss.Top,
 		cardStyle.Render(kpi1),
@@ -493,8 +544,8 @@ func (m Model) viewResult() string {
 	// also second row small KPIs
 	kpi5 := kpiCard("FEES", fmt.Sprintf("$%.0f", m.stats.TotalFee), fmt.Sprintf("%.1f%% drag", m.stats.FeeDragPct), false)
 	kpi6 := kpiCard("FUNDING", fmt.Sprintf("$%.2f", m.stats.TotalFunding), fmt.Sprintf("%.1f%% drag", m.stats.FundingDragPct), m.stats.TotalFunding < 5)
-	kpi7 := kpiCard("SQN / KELLY", fmt.Sprintf("%.2f / %.1f%%", m.stats.SQN, m.stats.KellyPct), fmt.Sprintf("Payoff %.2f", m.stats.PayoffRatio), m.stats.SQN>1.6)
-	kpi8 := kpiCard("FINAL", fmt.Sprintf("$%.0f", m.stats.FinalEquity), fmt.Sprintf("da $%.0f", m.stats.InitialCapital), m.stats.FinalEquity>m.stats.InitialCapital)
+	kpi7 := kpiCard("SQN / KELLY", fmt.Sprintf("%.2f / %.1f%%", m.stats.SQN, m.stats.KellyPct), fmt.Sprintf("Payoff %.2f", m.stats.PayoffRatio), m.stats.SQN > 1.6)
+	kpi8 := kpiCard("FINAL", fmt.Sprintf("$%.0f", m.stats.FinalEquity), fmt.Sprintf("da $%.0f", m.stats.InitialCapital), m.stats.FinalEquity > m.stats.InitialCapital)
 
 	kpiRow2 := lipgloss.JoinHorizontal(lipgloss.Top,
 		cardStyle.Render(kpi5),
@@ -506,9 +557,11 @@ func (m Model) viewResult() string {
 
 	// Equity sparkline
 	eqVals := make([]float64, len(m.result.Equity))
-	for i, e := range m.result.Equity { eqVals[i]=e.Equity }
+	for i, e := range m.result.Equity {
+		eqVals[i] = e.Equity
+	}
 	spark := ""
-	if len(eqVals)>2 {
+	if len(eqVals) > 2 {
 		spark = asciigraph.Plot(eqVals,
 			asciigraph.Height(8),
 			asciigraph.Width(60),
@@ -519,11 +572,18 @@ func (m Model) viewResult() string {
 	}
 	// Drawdown sparkline small
 	ddVals := make([]float64, len(m.result.Equity))
-	for i, e := range m.result.Equity { ddVals[i]=e.Drawdown; if ddVals[i]>0{ddVals[i]=0} }
+	for i, e := range m.result.Equity {
+		ddVals[i] = e.Drawdown
+		if ddVals[i] > 0 {
+			ddVals[i] = 0
+		}
+	}
 	ddSpark := ""
-	if len(ddVals)>2 {
+	if len(ddVals) > 2 {
 		// invert for visual: show as positive drawdown depth
-		for i, v := range ddVals { ddVals[i]= -v }
+		for i, v := range ddVals {
+			ddVals[i] = -v
+		}
 		ddSpark = asciigraph.Plot(ddVals, asciigraph.Height(4), asciigraph.Width(60), asciigraph.Caption("Drawdown % (depth)"), asciigraph.Precision(1))
 	}
 
@@ -540,19 +600,19 @@ func (m Model) viewResult() string {
 
 	// Report path + actions
 	reportBox := cardStyle.Render(
-		successStyle.Render("✓ Report HTML generato")+"\n"+
-			mutedStyle.Render(m.reportPath)+"\n\n"+
-			buttonStyle.Render("[o] Apri in browser")+"  "+
-			buttonInactiveStyle.Render("[r] Re-run")+"  "+
+		successStyle.Render("✓ Report HTML generato") + "\n" +
+			mutedStyle.Render(m.reportPath) + "\n\n" +
+			buttonStyle.Render("[o] Apri in browser") + "  " +
+			buttonInactiveStyle.Render("[r] Re-run") + "  " +
 			buttonInactiveStyle.Render("[esc] Menu"),
 	)
 
 	// Trades table via viewport
 	// viewport already contains trades
-	tradesCard := cardFocusStyle.Width(m.viewport.Width+2).Render(
-		titleStyle.Render("▤ TRADES DETTAGLIATI (scroll ↑/↓,  MT5 style)")+"\n"+
-			m.viewport.View()+
-			"\n"+mutedStyle.Render(fmt.Sprintf("Mostrati %d/%d  •  Fee $%.0f  Funding $%.2f  •  Gross $%.0f → Net $%.0f", len(m.result.Trades), m.stats.Trades, m.stats.TotalFee, m.stats.TotalFunding, m.stats.GrossPnL, m.stats.NetPnL)),
+	tradesCard := cardFocusStyle.Width(m.viewport.Width + 2).Render(
+		titleStyle.Render("▤ TRADES DETTAGLIATI (scroll ↑/↓,  MT5 style)") + "\n" +
+			m.viewport.View() +
+			"\n" + mutedStyle.Render(fmt.Sprintf("Mostrati %d/%d  •  Fee $%.0f  Funding $%.2f  •  Gross $%.0f → Net $%.0f", len(m.result.Trades), m.stats.Trades, m.stats.TotalFee, m.stats.TotalFunding, m.stats.GrossPnL, m.stats.NetPnL)),
 	)
 
 	header := headerStyle.Render(
@@ -604,9 +664,13 @@ func (m Model) viewCompare() string {
 	b.WriteString(hdr + "\n")
 	for i, r := range m.compareRows {
 		style := tableCellStyle
-		if i==0 { style = style.Background(lipgloss.Color("#052E16")).Foreground(greenCol) }
+		if i == 0 {
+			style = style.Background(lipgloss.Color("#052E16")).Foreground(greenCol)
+		}
 		retCol := style.Foreground(greenCol)
-		if r.Stats.ReturnPct<0 { retCol = style.Foreground(redCol) }
+		if r.Stats.ReturnPct < 0 {
+			retCol = style.Foreground(redCol)
+		}
 		row := lipgloss.JoinHorizontal(lipgloss.Top,
 			style.Width(6).Render(fmt.Sprintf("%d", i)),
 			style.Width(8).Render(r.Variant),
@@ -622,8 +686,8 @@ func (m Model) viewCompare() string {
 		)
 		b.WriteString(row + "\n")
 	}
-	table := cardStyle.Width(m.width-8).Render(b.String())
-	footer := helpStyle.Render("esc: menu  •  report: "+m.comparePath+"  •  Sharpe desc")
+	table := cardStyle.Width(m.width - 8).Render(b.String())
+	footer := helpStyle.Render("esc: menu  •  report: " + m.comparePath + "  •  Sharpe desc")
 	content := lipgloss.JoinVertical(lipgloss.Left, header, "", table, "", footer)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, content)
 }
@@ -680,17 +744,24 @@ func (m Model) buildResultViewport() string {
 	var b strings.Builder
 	// use monospaced table
 	hdr := fmt.Sprintf("%-3s %-6s %-16s %-16s %8s %8s %6s %4s %6s %4s %6s %6s %6s %6s %8s %6s %s\n",
-		"#","Side","Entry","Exit","E Price","X Price","Qty","Lev","Risk%","Bars","MAE","MFE","Fee","Fund","PnL","R","Reason")
+		"#", "Side", "Entry", "Exit", "E Price", "X Price", "Qty", "Lev", "Risk%", "Bars", "MAE", "MFE", "Fee", "Fund", "PnL", "R", "Reason")
 	b.WriteString(tableHeaderStyle.Render(hdr) + "\n")
 	limit := len(m.result.Trades)
-	if limit>500 { limit=500 }
-	for i:=0;i<limit;i++ {
+	if limit > 500 {
+		limit = 500
+	}
+	for i := 0; i < limit; i++ {
 		t := m.result.Trades[i]
 		side := "LONG"
 		badge := badgeLongStyle
-		if t.Side==-1 { side="SHORT"; badge=badgeShortStyle}
+		if t.Side == -1 {
+			side = "SHORT"
+			badge = badgeShortStyle
+		}
 		pnlCol := greenCol
-		if t.PnLNet<0 { pnlCol = redCol }
+		if t.PnLNet < 0 {
+			pnlCol = redCol
+		}
 		pnlStr := "" // kept for compatibility, not used in viewport plain text
 		_ = pnlStr
 		_ = badge
@@ -716,38 +787,42 @@ func (m Model) runBacktestCmd(symbol, variant, interval string) tea.Cmd {
 		// locate bars
 		csvPath := fmt.Sprintf("data/raw/%s_%s.csv", symbol, interval)
 		var bars data.Bars
-		if _, err := os.Stat(csvPath); err==nil {
+		if _, err := os.Stat(csvPath); err == nil {
 			b, err := data.LoadBarsCSV(csvPath)
 			if err != nil {
 				return backtestDoneMsg{err: fmt.Errorf("load csv %w", err)}
 			}
 			bars = b
 		} else {
-			seedMap := map[string]int64{"BTCUSDT":42,"ETHUSDT":1337,"SOLUSDT":9999}
+			seedMap := map[string]int64{"BTCUSDT": 42, "ETHUSDT": 1337, "SOLUSDT": 9999}
 			seed := seedMap[symbol]
-			if seed==0 { seed=42}
+			if seed == 0 {
+				seed = 42
+			}
 			bars = data.GenerateSynthetic(3000, intervalToDuration(interval), seed)
 		}
 		strat := strategy.New(variant, &cfgCopy)
 		trailMode := "donchian"
-		if variant=="D" { trailMode = cfgCopy.VariantD.TrailMode }
+		if variant == "D" {
+			trailMode = cfgCopy.VariantD.TrailMode
+		}
 		eng := backtest.EngineConfig{
 			Variant: variant, Symbol: symbol,
 			InitialCapital: cfgCopy.General.InitialCapital,
-			FeeBps: cfgCopy.Costs.FeeBps, SlippageBps: cfgCopy.Costs.SlippageBps,
-			Leverage: cfgCopy.Costs.Leverage,
-			UseNextOpen: cfgCopy.Backtest.UseNextOpenFill,
-			PyramidingMax: cfgCopy.Backtest.PyramidingMaxUnits,
+			FeeBps:         cfgCopy.Costs.FeeBps, SlippageBps: cfgCopy.Costs.SlippageBps,
+			Leverage:       cfgCopy.Costs.Leverage,
+			UseNextOpen:    cfgCopy.Backtest.UseNextOpenFill,
+			PyramidingMax:  cfgCopy.Backtest.PyramidingMaxUnits,
 			PyramidStepATR: cfgCopy.Backtest.PyramidStepATR,
-			TrailATRMult: cfgCopy.Backtest.TrailATRMult,
-			TrailMode: trailMode,
-			DonExit: 20,
+			TrailATRMult:   cfgCopy.Backtest.TrailATRMult,
+			TrailMode:      trailMode,
+			DonExit:        20,
 		}
 		res := backtest.Run(bars, strat, &cfgCopy, eng)
 		stats := metrics.Compute(res)
 		path := fmt.Sprintf("reports/TUI_%s_%s_%s.html", symbol, variant, time.Now().Format("20060102_150405"))
 		// ensure dir
-		_ = os.MkdirAll(filepath.Dir(path),0755)
+		_ = os.MkdirAll(filepath.Dir(path), 0755)
 		in := report.Input{Config: &cfgCopy, Bars: bars, Result: res, Stats: stats, Symbol: symbol, Variant: variant, GeneratedAt: time.Now()}
 		if err := report.Generate(path, in); err != nil {
 			return backtestDoneMsg{err: err}
@@ -761,62 +836,88 @@ func (m Model) runCompareCmd() tea.Cmd {
 	return func() tea.Msg {
 		cfg := m.cfg
 		syms := cfg.General.Symbols
-		if len(syms)==0 { syms = []string{"BTCUSDT","ETHUSDT","SOLUSDT"} }
+		if len(syms) == 0 {
+			syms = []string{"BTCUSDT", "ETHUSDT", "SOLUSDT"}
+		}
 		var rows []report.ComparisonRow
 		for _, sym := range syms {
 			csvPath := fmt.Sprintf("data/raw/%s_%s.csv", sym, cfg.General.Interval)
 			var bars data.Bars
-			if _, err := os.Stat(csvPath); err==nil {
-				b,_:= data.LoadBarsCSV(csvPath)
-				bars=b
+			if _, err := os.Stat(csvPath); err == nil {
+				b, _ := data.LoadBarsCSV(csvPath)
+				bars = b
 			} else {
-				seedMap:= map[string]int64{"BTCUSDT":42,"ETHUSDT":1337,"SOLUSDT":9999}
-				seed:=seedMap[sym]
-				if seed==0{seed=42}
-				bars=data.GenerateSynthetic(3000, 4*time.Hour, seed)
+				seedMap := map[string]int64{"BTCUSDT": 42, "ETHUSDT": 1337, "SOLUSDT": 9999}
+				seed := seedMap[sym]
+				if seed == 0 {
+					seed = 42
+				}
+				bars = data.GenerateSynthetic(3000, 4*time.Hour, seed)
 			}
-			for _, v := range []string{"A","B","C","D"} {
-				strat:= strategy.New(v, cfg)
-				trailMode:="donchian"
-				if v=="D"{trailMode=cfg.VariantD.TrailMode}
-				eng:= backtest.EngineConfig{Variant:v, Symbol:sym, InitialCapital:cfg.General.InitialCapital, FeeBps:cfg.Costs.FeeBps, SlippageBps:cfg.Costs.SlippageBps, Leverage:cfg.Costs.Leverage, UseNextOpen:true, PyramidingMax:cfg.Backtest.PyramidingMaxUnits, PyramidStepATR:cfg.Backtest.PyramidStepATR, TrailATRMult:cfg.Backtest.TrailATRMult, TrailMode:trailMode, DonExit:20}
-				res:= backtest.Run(bars,strat,cfg,eng)
-				stats:= metrics.Compute(res)
-				rows=append(rows, report.ComparisonRow{Symbol:sym, Variant:v, Stats:stats})
+			for _, v := range []string{"A", "B", "C", "D"} {
+				strat := strategy.New(v, cfg)
+				trailMode := "donchian"
+				if v == "D" {
+					trailMode = cfg.VariantD.TrailMode
+				}
+				eng := backtest.EngineConfig{Variant: v, Symbol: sym, InitialCapital: cfg.General.InitialCapital, FeeBps: cfg.Costs.FeeBps, SlippageBps: cfg.Costs.SlippageBps, Leverage: cfg.Costs.Leverage, UseNextOpen: true, PyramidingMax: cfg.Backtest.PyramidingMaxUnits, PyramidStepATR: cfg.Backtest.PyramidStepATR, TrailATRMult: cfg.Backtest.TrailATRMult, TrailMode: trailMode, DonExit: 20}
+				res := backtest.Run(bars, strat, cfg, eng)
+				stats := metrics.Compute(res)
+				rows = append(rows, report.ComparisonRow{Symbol: sym, Variant: v, Stats: stats})
 				// also generate individual html silently
-				path:=fmt.Sprintf("reports/%s_%s.html",sym,v)
-				_ = report.Generate(path, report.Input{Config:cfg, Bars:bars, Result:res, Stats:stats, Symbol:sym, Variant:v, GeneratedAt: time.Now()})
+				path := fmt.Sprintf("reports/%s_%s.html", sym, v)
+				_ = report.Generate(path, report.Input{Config: cfg, Bars: bars, Result: res, Stats: stats, Symbol: sym, Variant: v, GeneratedAt: time.Now()})
 			}
 		}
-		out:="reports/TUI_comparison.html"
-		if err:= report.GenerateComparison(out, rows, cfg); err!=nil{
-			return compareDoneMsg{err:err}
+		out := "reports/TUI_comparison.html"
+		if err := report.GenerateComparison(out, rows, cfg); err != nil {
+			return compareDoneMsg{err: err}
 		}
-		return compareDoneMsg{rows:rows, path:out}
+		return compareDoneMsg{rows: rows, path: out}
 	}
 }
 
 // helpers
 func intervalToDuration(s string) time.Duration {
 	switch s {
-	case "1m": return time.Minute
-	case "5m": return 5*time.Minute
-	case "15m":return 15*time.Minute
-	case "1h": return time.Hour
-	case "4h": return 4*time.Hour
-	case "1d": return 24*time.Hour
+	case "1m":
+		return time.Minute
+	case "5m":
+		return 5 * time.Minute
+	case "15m":
+		return 15 * time.Minute
+	case "1h":
+		return time.Hour
+	case "4h":
+		return 4 * time.Hour
+	case "1d":
+		return 24 * time.Hour
 	}
-	return 4*time.Hour
+	return 4 * time.Hour
 }
 func badgeForVariant(v string) string {
 	switch v {
-	case "A": return badgeLongStyle.Render("A Classic")
-	case "B": return lipgloss.NewStyle().Background(lipgloss.Color("#1E3A8A")).Foreground(lipgloss.Color("#93C5FD")).Padding(0,1).Render("B Regime")
-	case "C": return lipgloss.NewStyle().Background(lipgloss.Color("#064E3B")).Foreground(lipgloss.Color("#6EE7B7")).Padding(0,1).Render("C Deriv")
-	case "D": return badgeShortStyle.Background(lipgloss.Color("#4C1D95")).Foreground(lipgloss.Color("#DDD6FE")).Render("D Full")
+	case "A":
+		return badgeLongStyle.Render("A Classic")
+	case "B":
+		return lipgloss.NewStyle().Background(lipgloss.Color("#1E3A8A")).Foreground(lipgloss.Color("#93C5FD")).Padding(0, 1).Render("B Regime")
+	case "C":
+		return lipgloss.NewStyle().Background(lipgloss.Color("#064E3B")).Foreground(lipgloss.Color("#6EE7B7")).Padding(0, 1).Render("C Deriv")
+	case "D":
+		return badgeShortStyle.Background(lipgloss.Color("#4C1D95")).Foreground(lipgloss.Color("#DDD6FE")).Render("D Full")
 	}
 	return v
 }
-func max(a,b int) int{ if a>b{return a}; return b}
-func min(a,b int) int{ if a<b{return a}; return b}
-func isNaN(f float64) bool{ return math.IsNaN(f)}
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+func isNaN(f float64) bool { return math.IsNaN(f) }

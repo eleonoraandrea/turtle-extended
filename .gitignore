@@ -8,3 +8,6 @@ data/raw/*_funding.json
 *.tmp
 .env
 /tmp/atps.halt
+graphify-out/
+.atps/
+.planning/graphs/

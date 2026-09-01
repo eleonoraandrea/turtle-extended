@@ -19,120 +19,171 @@ import (
 
 // Report input bundles
 type Input struct {
-	Config *config.Config
-	Bars   data.Bars
-	Result *backtest.Result
-	Stats  metrics.Stats
-	Symbol string
-	Variant string
+	Config      *config.Config
+	Bars        data.Bars
+	Result      *backtest.Result
+	Stats       metrics.Stats
+	Symbol      string
+	Variant     string
 	GeneratedAt time.Time
 }
 
 type ComparisonRow struct {
-	Symbol string
+	Symbol  string
 	Variant string
-	Stats metrics.Stats
+	Stats   metrics.Stats
 }
 
 // Generate single backtest HTML self-contained
 func Generate(path string, in Input) error {
-	if err:= os.MkdirAll(filepath.Dir(path),0755);err!=nil{return err}
-	f,err:=os.Create(path)
-	if err!=nil{return err}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
 	defer f.Close()
 	// prepare data for template
-	equityJSON, _:= json.Marshal(in.Result.Equity)
-	tradesJSON,_:= json.Marshal(in.Result.Trades)
-	barsJSON,_:= json.Marshal(in.Bars)
+	equityJSON, _ := json.Marshal(in.Result.Equity)
+	tradesJSON, _ := json.Marshal(in.Result.Trades)
+	barsJSON, _ := json.Marshal(in.Bars)
 	// compute monthly sorted
-	monthlyKeys:= metrics.SortedMonthly(in.Stats.MonthlyReturns)
-	yearlyKeys:= metrics.SortedMonthly(in.Stats.YearlyReturns)
+	monthlyKeys := metrics.SortedMonthly(in.Stats.MonthlyReturns)
+	yearlyKeys := metrics.SortedMonthly(in.Stats.YearlyReturns)
 	// SVG equity polyline
-	equitySVG:= svgEquity(in.Result.Equity, 800, 220)
-	drawdownSVG:= svgDrawdown(in.Result.Equity, 800, 120)
+	equitySVG := svgEquity(in.Result.Equity, 800, 220)
+	drawdownSVG := svgDrawdown(in.Result.Equity, 800, 120)
 	// histogram helpers
-	profitHistSVG:= svgTradeHist(in.Result.Trades, 500, 180)
+	profitHistSVG := svgTradeHist(in.Result.Trades, 500, 180)
 	// Prepare trades table limited
-	limit:= in.Config.Report.MaxTradesInTable
-	if limit==0{limit=500}
-	tradesShown:= in.Result.Trades
-	if len(tradesShown)>limit{tradesShown=tradesShown[len(tradesShown)-limit:]}
+	limit := in.Config.Report.MaxTradesInTable
+	if limit == 0 {
+		limit = 500
+	}
+	tradesShown := in.Result.Trades
+	if len(tradesShown) > limit {
+		tradesShown = tradesShown[len(tradesShown)-limit:]
+	}
 	// regime breakdown simple
-	regimeTable:= regimeBreakdown(in.Result, in.Bars)
+	regimeTable := regimeBreakdown(in.Result, in.Bars)
 
 	// risk & sizing aggregates
 	lim := in.Result.RiskLimitsUsed
-	dataMap:= map[string]interface{}{
-		"Title": fmt.Sprintf("%s %s %s — %s", in.Config.Report.TitlePrefix, in.Symbol, in.Variant, in.Result.Variant),
-		"Symbol": in.Symbol,
-		"Variant": in.Variant,
-		"VariantName": in.Result.Variant,
-		"GeneratedAt": in.GeneratedAt.Format("2006-01-02 15:04 MST"),
-		"Stats": in.Stats,
-		"Config": in.Config,
-		"EquityCurve": in.Result.Equity,
-		"Trades": tradesShown,
+	dataMap := map[string]interface{}{
+		"Title":          fmt.Sprintf("%s %s %s — %s", in.Config.Report.TitlePrefix, in.Symbol, in.Variant, in.Result.Variant),
+		"Symbol":         in.Symbol,
+		"Variant":        in.Variant,
+		"VariantName":    in.Result.Variant,
+		"GeneratedAt":    in.GeneratedAt.Format("2006-01-02 15:04 MST"),
+		"Stats":          in.Stats,
+		"Config":         in.Config,
+		"EquityCurve":    in.Result.Equity,
+		"Trades":         tradesShown,
 		"AllTradesCount": len(in.Result.Trades),
-		"EquitySVG": template.HTML(equitySVG),
-		"DrawdownSVG": template.HTML(drawdownSVG),
-		"TradeHistSVG": template.HTML(profitHistSVG),
-		"MonthlyKeys": monthlyKeys,
-		"YearlyKeys": yearlyKeys,
-		"RegimeTable": regimeTable,
-		"EquityJSON": template.JS(equityJSON),
-		"TradesJSON": template.JS(tradesJSON),
-		"BarsJSON": template.JS(barsJSON),
-		"ReportTheme": in.Config.Report.Theme,
+		"EquitySVG":      template.HTML(equitySVG),
+		"DrawdownSVG":    template.HTML(drawdownSVG),
+		"TradeHistSVG":   template.HTML(profitHistSVG),
+		"MonthlyKeys":    monthlyKeys,
+		"YearlyKeys":     yearlyKeys,
+		"RegimeTable":    regimeTable,
+		"EquityJSON":     template.JS(equityJSON),
+		"TradesJSON":     template.JS(tradesJSON),
+		"BarsJSON":       template.JS(barsJSON),
+		"ReportTheme":    in.Config.Report.Theme,
 		"InitialCapital": in.Result.InitialCapital,
-		"FinalEquity": in.Result.FinalEquity,
-		"Interval": in.Config.General.Interval,
-		"AvgLev": in.Result.AvgLeverage,
-		"MaxLev": in.Result.MaxLeverageUsed,
-		"LevCap": lim.MaxLeverage,
-		"AvgRisk": in.Result.AvgRiskPct,
-		"MaxRiskUsed": in.Result.MaxRiskPctUsed,
-		"MaxHeat": in.Result.MaxHeatSeen,
-		"HeatLimit": lim.MaxHeatPct,
-		"DDStart": lim.DDDeleverageStart,
-		"DDFlat": lim.DDFlatPct,
+		"FinalEquity":    in.Result.FinalEquity,
+		"Interval":       in.Config.General.Interval,
+		"AvgLev":         in.Result.AvgLeverage,
+		"MaxLev":         in.Result.MaxLeverageUsed,
+		"LevCap":         lim.MaxLeverage,
+		"AvgRisk":        in.Result.AvgRiskPct,
+		"MaxRiskUsed":    in.Result.MaxRiskPctUsed,
+		"MaxHeat":        in.Result.MaxHeatSeen,
+		"HeatLimit":      lim.MaxHeatPct,
+		"DDStart":        lim.DDDeleverageStart,
+		"DDFlat":         lim.DDFlatPct,
 	}
-	tmpl:= template.Must(template.New("report").Funcs(template.FuncMap{
+	tmpl := template.Must(template.New("report").Funcs(template.FuncMap{
 		"fmtFloat": func(v float64) string {
-			if math.IsNaN(v){return "—"}
-			if math.IsInf(v,1){return "∞"}
-			if math.IsInf(v,-1){return "-∞"}
+			if math.IsNaN(v) {
+				return "—"
+			}
+			if math.IsInf(v, 1) {
+				return "∞"
+			}
+			if math.IsInf(v, -1) {
+				return "-∞"
+			}
 			return fmt.Sprintf("%.2f", v)
 		},
 		"fmtPct": func(v float64) string {
-			if math.IsNaN(v){return "—"}
+			if math.IsNaN(v) {
+				return "—"
+			}
 			return fmt.Sprintf("%.2f%%", v)
 		},
-		"fmtMoney": func(v float64) string { return fmt.Sprintf("$%.2f", v)},
-		"sideStr": func(s int) string { if s==1{return "LONG"}; if s==-1{return "SHORT"}; return "FLAT"},
-		"sideColor": func(s int) string { if s==1{return "#22c55e"}; if s==-1{return "#ef4444"}; return "#888"},
-		"isPos": func(v float64) bool { return v>0 && !math.IsNaN(v) },
-		"indexFloat": func(m map[string]float64, k string) float64 { if m==nil{return math.NaN()}; return m[k] },
+		"fmtMoney": func(v float64) string { return fmt.Sprintf("$%.2f", v) },
+		"sideStr": func(s int) string {
+			if s == 1 {
+				return "LONG"
+			}
+			if s == -1 {
+				return "SHORT"
+			}
+			return "FLAT"
+		},
+		"sideColor": func(s int) string {
+			if s == 1 {
+				return "#22c55e"
+			}
+			if s == -1 {
+				return "#ef4444"
+			}
+			return "#888"
+		},
+		"isPos": func(v float64) bool { return v > 0 && !math.IsNaN(v) },
+		"indexFloat": func(m map[string]float64, k string) float64 {
+			if m == nil {
+				return math.NaN()
+			}
+			return m[k]
+		},
 	}).Parse(reportHTML))
 	return tmpl.Execute(f, dataMap)
 }
 
 // GenerateComparison HTML for A/B/C/D
 func GenerateComparison(path string, rows []ComparisonRow, cfg *config.Config) error {
-	if err:= os.MkdirAll(filepath.Dir(path),0755);err!=nil{return err}
-	f,err:=os.Create(path)
-	if err!=nil{return err}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
 	defer f.Close()
 	// sort by Sharpe desc
-	sort.Slice(rows, func(i,j int) bool{ return rows[i].Stats.Sharpe > rows[j].Stats.Sharpe})
-	dataMap:= map[string]interface{}{
-		"Title": "ATPS Comparison — A/B/C/D",
-		"Rows": rows,
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Stats.Sharpe > rows[j].Stats.Sharpe })
+	dataMap := map[string]interface{}{
+		"Title":       "ATPS Comparison — A/B/C/D",
+		"Rows":        rows,
 		"GeneratedAt": time.Now().Format("2006-01-02 15:04 MST"),
-		"Config": cfg,
+		"Config":      cfg,
 	}
-	tmpl:= template.Must(template.New("cmp").Funcs(template.FuncMap{
-		"fmtFloat": func(v float64) string { if math.IsNaN(v){return "—"}; return fmt.Sprintf("%.2f",v)},
-		"fmtPct": func(v float64) string { if math.IsNaN(v){return "—"}; return fmt.Sprintf("%.2f%%",v)},
+	tmpl := template.Must(template.New("cmp").Funcs(template.FuncMap{
+		"fmtFloat": func(v float64) string {
+			if math.IsNaN(v) {
+				return "—"
+			}
+			return fmt.Sprintf("%.2f", v)
+		},
+		"fmtPct": func(v float64) string {
+			if math.IsNaN(v) {
+				return "—"
+			}
+			return fmt.Sprintf("%.2f%%", v)
+		},
 	}).Parse(comparisonHTML))
 	return tmpl.Execute(f, dataMap)
 }
@@ -140,29 +191,40 @@ func GenerateComparison(path string, rows []ComparisonRow, cfg *config.Config) e
 // SVG helpers
 
 func svgEquity(equity []backtest.EquityPoint, w, h int) string {
-	if len(equity)==0{return "<div>no data</div>"}
-	minE, maxE:= equity[0].Equity, equity[0].Equity
-	for _,e:=range equity{
-		if e.Equity<minE{minE=e.Equity}
-		if e.Equity>maxE{maxE=e.Equity}
+	if len(equity) == 0 {
+		return "<div>no data</div>"
 	}
-	pad:= (maxE-minE)*0.1
-	if pad==0{pad=maxE*0.02}
-	minE -= pad; maxE+=pad
+	minE, maxE := equity[0].Equity, equity[0].Equity
+	for _, e := range equity {
+		if e.Equity < minE {
+			minE = e.Equity
+		}
+		if e.Equity > maxE {
+			maxE = e.Equity
+		}
+	}
+	pad := (maxE - minE) * 0.1
+	if pad == 0 {
+		pad = maxE * 0.02
+	}
+	minE -= pad
+	maxE += pad
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf(`<svg viewBox="0 0 %d %d" width="100%%" height="%d" style="background:#111827;border-radius:8px">`, w, h, h))
 	// grid
-	for i:=0;i<=4;i++{
-		y:= float64(h-20) * float64(i)/4 + 10
+	for i := 0; i <= 4; i++ {
+		y := float64(h-20)*float64(i)/4 + 10
 		sb.WriteString(fmt.Sprintf(`<line x1="40" y1="%.1f" x2="%d" y2="%.1f" stroke="#1f2937" stroke-width="1"/>`, y, w-10, y))
 	}
 	// polyline equity
 	sb.WriteString(`<polyline fill="none" stroke="#60a5fa" stroke-width="2" points="`)
-	for i,e:=range equity{
-		x:= 40 + float64(w-50)*float64(i)/float64(len(equity)-1)
-		y:= 10 + (maxE - e.Equity)/(maxE-minE)*float64(h-30)
-		if i>0{sb.WriteString(" ")}
-		sb.WriteString(fmt.Sprintf("%.1f,%.1f", x,y))
+	for i, e := range equity {
+		x := 40 + float64(w-50)*float64(i)/float64(len(equity)-1)
+		y := 10 + (maxE-e.Equity)/(maxE-minE)*float64(h-30)
+		if i > 0 {
+			sb.WriteString(" ")
+		}
+		sb.WriteString(fmt.Sprintf("%.1f,%.1f", x, y))
 	}
 	sb.WriteString(`"/>`)
 	// bh line? simplified no
@@ -172,27 +234,35 @@ func svgEquity(equity []backtest.EquityPoint, w, h int) string {
 	return sb.String()
 }
 func svgDrawdown(equity []backtest.EquityPoint, w, h int) string {
-	if len(equity)==0{return ""}
-	minDD:=0.0
-	maxDD:=0.0
-	for _,e:=range equity{
-		if e.Drawdown < minDD {minDD=e.Drawdown}
-		if e.Drawdown > maxDD {maxDD=e.Drawdown}
+	if len(equity) == 0 {
+		return ""
 	}
-	if minDD==0{minDD=-1}
+	minDD := 0.0
+	maxDD := 0.0
+	for _, e := range equity {
+		if e.Drawdown < minDD {
+			minDD = e.Drawdown
+		}
+		if e.Drawdown > maxDD {
+			maxDD = e.Drawdown
+		}
+	}
+	if minDD == 0 {
+		minDD = -1
+	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`<svg viewBox="0 0 %d %d" width="100%%" height="%d" style="background:#1f0f0f;border-radius:8px">`, w,h,h))
+	sb.WriteString(fmt.Sprintf(`<svg viewBox="0 0 %d %d" width="100%%" height="%d" style="background:#1f0f0f;border-radius:8px">`, w, h, h))
 	// baseline 0 at top
 	sb.WriteString(fmt.Sprintf(`<line x1="40" y1="10" x2="%d" y2="10" stroke="#374151" stroke-width="1"/>`, w-10))
 	// drawdown as bars
-	barW:= float64(w-50)/float64(len(equity))
-	for i,e:=range equity{
-		x:=40+float64(i)*barW
-		dd:=e.Drawdown
-		height:= math.Abs(dd)/math.Abs(minDD)*float64(h-20)
-		y:=10.0
-		if dd<0 {
-			sb.WriteString(fmt.Sprintf(`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#f87171" opacity="0.85"/>`, x, y, math.Max(1,barW-0.5), height))
+	barW := float64(w-50) / float64(len(equity))
+	for i, e := range equity {
+		x := 40 + float64(i)*barW
+		dd := e.Drawdown
+		height := math.Abs(dd) / math.Abs(minDD) * float64(h-20)
+		y := 10.0
+		if dd < 0 {
+			sb.WriteString(fmt.Sprintf(`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#f87171" opacity="0.85"/>`, x, y, math.Max(1, barW-0.5), height))
 		}
 	}
 	sb.WriteString(fmt.Sprintf(`<text x="10" y="15" fill="#fca5a5" font-size="10">0%%</text>`))
@@ -200,36 +270,58 @@ func svgDrawdown(equity []backtest.EquityPoint, w, h int) string {
 	sb.WriteString(`</svg>`)
 	return sb.String()
 }
-func svgTradeHist(trades []backtest.Trade, w,h int) string {
-	if len(trades)==0{return "<div style='color:#9ca3af'>no trades</div>"}
-	// histogram of PnL
-	minP, maxP:= trades[0].PnLNet, trades[0].PnLNet
-	for _,t:=range trades{
-		if t.PnLNet<minP{minP=t.PnLNet}
-		if t.PnLNet>maxP{maxP=t.PnLNet}
+func svgTradeHist(trades []backtest.Trade, w, h int) string {
+	if len(trades) == 0 {
+		return "<div style='color:#9ca3af'>no trades</div>"
 	}
-	bins:=20
-	if len(trades)<20{bins=10}
-	counts:=make([]int,bins)
-	rangeW:= (maxP-minP)
-	if rangeW==0{rangeW=1}
-	for _,t:=range trades{
-		idx:= int((t.PnLNet-minP)/rangeW*float64(bins-1))
-		if idx<0{idx=0}
-		if idx>=bins{idx=bins-1}
+	// histogram of PnL
+	minP, maxP := trades[0].PnLNet, trades[0].PnLNet
+	for _, t := range trades {
+		if t.PnLNet < minP {
+			minP = t.PnLNet
+		}
+		if t.PnLNet > maxP {
+			maxP = t.PnLNet
+		}
+	}
+	bins := 20
+	if len(trades) < 20 {
+		bins = 10
+	}
+	counts := make([]int, bins)
+	rangeW := (maxP - minP)
+	if rangeW == 0 {
+		rangeW = 1
+	}
+	for _, t := range trades {
+		idx := int((t.PnLNet - minP) / rangeW * float64(bins-1))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= bins {
+			idx = bins - 1
+		}
 		counts[idx]++
 	}
-	maxC:=0
-	for _,c:=range counts{if c>maxC{maxC=c}}
+	maxC := 0
+	for _, c := range counts {
+		if c > maxC {
+			maxC = c
+		}
+	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(`<svg viewBox="0 0 %d %d" width="100%%" height="%d" style="background:#111827;border-radius:8px">`,w,h,h))
-	barW:= float64(w-40)/float64(bins)
-	for i,c:=range counts{
-		height:= float64(c)/float64(maxC)*float64(h-30)
-		x:=20+float64(i)*barW
-		y:= float64(h-15)-height
-		color:= "#60a5fa"
-		if i < bins/2 {color="#f87171"} else {color="#34d399"}
+	sb.WriteString(fmt.Sprintf(`<svg viewBox="0 0 %d %d" width="100%%" height="%d" style="background:#111827;border-radius:8px">`, w, h, h))
+	barW := float64(w-40) / float64(bins)
+	for i, c := range counts {
+		height := float64(c) / float64(maxC) * float64(h-30)
+		x := 20 + float64(i)*barW
+		y := float64(h-15) - height
+		color := "#60a5fa"
+		if i < bins/2 {
+			color = "#f87171"
+		} else {
+			color = "#34d399"
+		}
 		sb.WriteString(fmt.Sprintf(`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"/>`, x, y, barW-2, height, color))
 	}
 	sb.WriteString(`</svg>`)
@@ -237,42 +329,56 @@ func svgTradeHist(trades []backtest.Trade, w,h int) string {
 }
 
 type RegimeRow struct {
-	Regime string
-	Trades int
+	Regime  string
+	Trades  int
 	WinRate float64
-	AvgPnL float64
+	AvgPnL  float64
 }
 
 func regimeBreakdown(res *backtest.Result, bars data.Bars) []RegimeRow {
 	// simple: split by month or by volatility? Here split by long/short and by quarter
-	longWins, longCnt, shortWins, shortCnt:=0,0,0,0
+	longWins, longCnt, shortWins, shortCnt := 0, 0, 0, 0
 	var longPnL, shortPnL float64
-	for _,t:=range res.Trades{
-		if t.Side==1{
-			longCnt++; longPnL+=t.PnLNet; if t.PnLNet>0{longWins++}
-		} else if t.Side==-1{
-			shortCnt++; shortPnL+=t.PnLNet; if t.PnLNet>0{shortWins++}
+	for _, t := range res.Trades {
+		if t.Side == 1 {
+			longCnt++
+			longPnL += t.PnLNet
+			if t.PnLNet > 0 {
+				longWins++
+			}
+		} else if t.Side == -1 {
+			shortCnt++
+			shortPnL += t.PnLNet
+			if t.PnLNet > 0 {
+				shortWins++
+			}
 		}
 	}
 	var out []RegimeRow
-	if longCnt>0{
-		out=append(out, RegimeRow{Regime:"LONG", Trades: longCnt, WinRate: float64(longWins)/float64(longCnt)*100, AvgPnL: longPnL/float64(longCnt)})
+	if longCnt > 0 {
+		out = append(out, RegimeRow{Regime: "LONG", Trades: longCnt, WinRate: float64(longWins) / float64(longCnt) * 100, AvgPnL: longPnL / float64(longCnt)})
 	}
-	if shortCnt>0{
-		out=append(out, RegimeRow{Regime:"SHORT", Trades: shortCnt, WinRate: float64(shortWins)/float64(shortCnt)*100, AvgPnL: shortPnL/float64(shortCnt)})
+	if shortCnt > 0 {
+		out = append(out, RegimeRow{Regime: "SHORT", Trades: shortCnt, WinRate: float64(shortWins) / float64(shortCnt) * 100, AvgPnL: shortPnL / float64(shortCnt)})
 	}
 	// by year
-	yMap:=map[string][]backtest.Trade{}
-	for _,t:=range res.Trades{
-		y:=t.EntryTime.Format("2006")
-		yMap[y]=append(yMap[y], t)
+	yMap := map[string][]backtest.Trade{}
+	for _, t := range res.Trades {
+		y := t.EntryTime.Format("2006")
+		yMap[y] = append(yMap[y], t)
 	}
-	for y,ts:=range yMap{
-		w:=0; sum:=0.0
-		for _,t:=range ts{sum+=t.PnLNet; if t.PnLNet>0{w++}}
-		out=append(out, RegimeRow{Regime:"Year "+y, Trades: len(ts), WinRate: float64(w)/float64(len(ts))*100, AvgPnL: sum/float64(len(ts))})
+	for y, ts := range yMap {
+		w := 0
+		sum := 0.0
+		for _, t := range ts {
+			sum += t.PnLNet
+			if t.PnLNet > 0 {
+				w++
+			}
+		}
+		out = append(out, RegimeRow{Regime: "Year " + y, Trades: len(ts), WinRate: float64(w) / float64(len(ts)) * 100, AvgPnL: sum / float64(len(ts))})
 	}
-	sort.Slice(out, func(i,j int) bool{return out[i].Regime < out[j].Regime})
+	sort.Slice(out, func(i, j int) bool { return out[i].Regime < out[j].Regime })
 	return out
 }
 

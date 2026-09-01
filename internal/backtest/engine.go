@@ -13,104 +13,104 @@ import (
 
 // Trade represents one round-trip (entry to exit)
 type Trade struct {
-	Symbol     string    `json:"symbol"`
-	Side       int       `json:"side"` // 1 long, -1 short
-	EntryTime  time.Time `json:"entry_time"`
-	ExitTime   time.Time `json:"exit_time"`
-	EntryPrice float64   `json:"entry_price"`
-	ExitPrice  float64   `json:"exit_price"`
-	Qty        float64   `json:"qty"`
-	EntryATR   float64   `json:"entry_atr"`
-	StopPrice  float64   `json:"stop_price"`
-	ExitReason string    `json:"exit_reason"`
-	PnL        float64   `json:"pnl"`     // gross PnL in quote (USDC)
-	PnLNet     float64   `json:"pnl_net"` // net after fees+funding
-	Fee        float64   `json:"fee"`
-	FundingCost float64  `json:"funding_cost"`
-	Slippage   float64   `json:"slippage"`
-	BarsHeld   int       `json:"bars_held"`
-	MAE        float64   `json:"mae"`
-	MFE        float64   `json:"mfe"`
-	ReturnPct  float64   `json:"return_pct"`
+	Symbol      string    `json:"symbol"`
+	Side        int       `json:"side"` // 1 long, -1 short
+	EntryTime   time.Time `json:"entry_time"`
+	ExitTime    time.Time `json:"exit_time"`
+	EntryPrice  float64   `json:"entry_price"`
+	ExitPrice   float64   `json:"exit_price"`
+	Qty         float64   `json:"qty"`
+	EntryATR    float64   `json:"entry_atr"`
+	StopPrice   float64   `json:"stop_price"`
+	ExitReason  string    `json:"exit_reason"`
+	PnL         float64   `json:"pnl"`     // gross PnL in quote (USDC)
+	PnLNet      float64   `json:"pnl_net"` // net after fees+funding
+	Fee         float64   `json:"fee"`
+	FundingCost float64   `json:"funding_cost"`
+	Slippage    float64   `json:"slippage"`
+	BarsHeld    int       `json:"bars_held"`
+	MAE         float64   `json:"mae"`
+	MFE         float64   `json:"mfe"`
+	ReturnPct   float64   `json:"return_pct"`
 	// ── risk engine audit ──
-	RiskPct    float64   `json:"risk_pct"`     // effective risk % of equity at entry
-	Leverage   float64   `json:"leverage"`     // notional/equity at entry (DYNAMIC)
-	Notional   float64   `json:"notional"`     // entry notional
-	StopDist   float64   `json:"stop_dist"`    // |entry-stop|
-	RMultiple  float64   `json:"r_multiple"`   // PnLNet / riskAmount
-	SizingLog  string    `json:"sizing_log,omitempty"`
-	IsSatellite bool     `json:"is_satellite,omitempty"`
+	RiskPct     float64 `json:"risk_pct"`   // effective risk % of equity at entry
+	Leverage    float64 `json:"leverage"`   // notional/equity at entry (DYNAMIC)
+	Notional    float64 `json:"notional"`   // entry notional
+	StopDist    float64 `json:"stop_dist"`  // |entry-stop|
+	RMultiple   float64 `json:"r_multiple"` // PnLNet / riskAmount
+	SizingLog   string  `json:"sizing_log,omitempty"`
+	IsSatellite bool    `json:"is_satellite,omitempty"`
 }
 
 // Position open — supports satellite 30% for large winners (positive skew)
 type Position struct {
-	Symbol      string
-	Side        int
-	Qty         float64
-	EntryPrice  float64
-	EntryTime   time.Time
-	EntryATR    float64
-	StopPrice   float64
-	Units       int
-	EntryBarIdx int
-	MAE         float64
-	MFE         float64
+	Symbol       string
+	Side         int
+	Qty          float64
+	EntryPrice   float64
+	EntryTime    time.Time
+	EntryATR     float64
+	StopPrice    float64
+	Units        int
+	EntryBarIdx  int
+	MAE          float64
+	MFE          float64
 	FundingAccum float64
-	RiskPct     float64
-	Leverage    float64
-	Notional    float64
-	RiskAmount  float64
-	SizingLog   string
-	IsSatellite bool // true = satellite 30% (wide trailing, captures +5R/+10R)
-	DonExitLen  int  // per-position Donchian exit length (core 20, satellite 55)
+	RiskPct      float64
+	Leverage     float64
+	Notional     float64
+	RiskAmount   float64
+	SizingLog    string
+	IsSatellite  bool // true = satellite 30% (wide trailing, captures +5R/+10R)
+	DonExitLen   int  // per-position Donchian exit length (core 20, satellite 55)
 }
 
 type EquityPoint struct {
 	Time     time.Time `json:"time"`
-	Equity  float64   `json:"equity"`
-	Gross   float64   `json:"gross,omitempty"`
-	Drawdown float64  `json:"drawdown,omitempty"`
-	Price   float64   `json:"price"`
-	Heat    float64   `json:"heat,omitempty"` // open risk % at this bar
-	Leverage float64 `json:"leverage,omitempty"` // open notional/equity
+	Equity   float64   `json:"equity"`
+	Gross    float64   `json:"gross,omitempty"`
+	Drawdown float64   `json:"drawdown,omitempty"`
+	Price    float64   `json:"price"`
+	Heat     float64   `json:"heat,omitempty"`     // open risk % at this bar
+	Leverage float64   `json:"leverage,omitempty"` // open notional/equity
 }
 
 type Result struct {
-	Symbol   string        `json:"symbol"`
-	Variant  string        `json:"variant"`
-	Bars     data.Bars     `json:"-"`
-	Trades   []Trade       `json:"trades"`
-	Equity   []EquityPoint `json:"equity"`
-	InitialCapital float64 `json:"initial_capital"`
-	FinalEquity    float64 `json:"final_equity"`
-	GrossPnL       float64 `json:"gross_pnl"`
-	NetPnL         float64 `json:"net_pnl"`
-	TotalFee       float64 `json:"total_fee"`
-	TotalFunding   float64 `json:"total_funding"`
-	TotalSlippage  float64 `json:"total_slippage"`
-	MaxUnits       int     `json:"max_units"`
+	Symbol         string        `json:"symbol"`
+	Variant        string        `json:"variant"`
+	Bars           data.Bars     `json:"-"`
+	Trades         []Trade       `json:"trades"`
+	Equity         []EquityPoint `json:"equity"`
+	InitialCapital float64       `json:"initial_capital"`
+	FinalEquity    float64       `json:"final_equity"`
+	GrossPnL       float64       `json:"gross_pnl"`
+	NetPnL         float64       `json:"net_pnl"`
+	TotalFee       float64       `json:"total_fee"`
+	TotalFunding   float64       `json:"total_funding"`
+	TotalSlippage  float64       `json:"total_slippage"`
+	MaxUnits       int           `json:"max_units"`
 	// risk audit aggregates
-	AvgLeverage    float64 `json:"avg_leverage"`
-	MaxLeverageUsed float64 `json:"max_leverage_used"`
-	AvgRiskPct     float64 `json:"avg_risk_pct"`
-	MaxRiskPctUsed float64 `json:"max_risk_pct_used"`
-	MaxHeatSeen    float64 `json:"max_heat_seen"`
-	RiskLimitsUsed risk.RiskLimits `json:"risk_limits_used"`
+	AvgLeverage     float64         `json:"avg_leverage"`
+	MaxLeverageUsed float64         `json:"max_leverage_used"`
+	AvgRiskPct      float64         `json:"avg_risk_pct"`
+	MaxRiskPctUsed  float64         `json:"max_risk_pct_used"`
+	MaxHeatSeen     float64         `json:"max_heat_seen"`
+	RiskLimitsUsed  risk.RiskLimits `json:"risk_limits_used"`
 }
 
 type EngineConfig struct {
-	Variant string
-	Symbol  string
+	Variant        string
+	Symbol         string
 	InitialCapital float64
-	FeeBps    float64
-	SlippageBps float64
-	Leverage float64 // legacy fallback hard cap if risk.max_leverage==0
-	UseNextOpen bool
-	PyramidingMax int
+	FeeBps         float64
+	SlippageBps    float64
+	Leverage       float64 // legacy fallback hard cap if risk.max_leverage==0
+	UseNextOpen    bool
+	PyramidingMax  int
 	PyramidStepATR float64
-	TrailATRMult float64
-	TrailMode string
-	DonExit int
+	TrailATRMult   float64
+	TrailMode      string
+	DonExit        int
 }
 
 func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng EngineConfig) *Result {
@@ -227,7 +227,9 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					exitReason = "stop"
 					exitPrice = pos.StopPrice
 					if eng.SlippageBps > 0 {
-						exitPrice -= exitPrice * eng.SlippageBps / 10000.0
+						slip := exitPrice * eng.SlippageBps / 10000.0
+						exitPrice -= slip
+						totalSlippage += slip * pos.Qty
 					}
 				} else if !math.IsNaN(donL) && bar.Close < donL {
 					exit = true
@@ -259,7 +261,9 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					exitReason = "stop"
 					exitPrice = pos.StopPrice
 					if eng.SlippageBps > 0 {
-						exitPrice += exitPrice * eng.SlippageBps / 10000.0
+						slip := exitPrice * eng.SlippageBps / 10000.0
+						exitPrice += slip
+						totalSlippage += slip * pos.Qty
 					}
 				} else if !math.IsNaN(donH) && bar.Close > donH {
 					exit = true
@@ -393,26 +397,30 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 				atr = 0
 			}
 
-			// fill price preview (next open + slippage)
+			// fill price preview (next open + slippage) — track slippage cost
 			fillPrice := bar.Close
 			fillTime := bar.Time
+			slipAmt := 0.0
 			if eng.UseNextOpen && i+1 < n {
 				fillPrice = bars[i+1].Open
 				fillTime = bars[i+1].Time
 				if eng.SlippageBps > 0 {
+					slipAmt = fillPrice * eng.SlippageBps / 10000.0
 					if sig.Side == 1 {
-						fillPrice += fillPrice * eng.SlippageBps / 10000.0
+						fillPrice += slipAmt
 					} else {
-						fillPrice -= fillPrice * eng.SlippageBps / 10000.0
+						fillPrice -= slipAmt
 					}
 				}
 			} else if eng.SlippageBps > 0 {
+				slipAmt = fillPrice * eng.SlippageBps / 10000.0
 				if sig.Side == 1 {
-					fillPrice += fillPrice * eng.SlippageBps / 10000.0
+					fillPrice += slipAmt
 				} else {
-					fillPrice -= fillPrice * eng.SlippageBps / 10000.0
+					fillPrice -= slipAmt
 				}
 			}
+			// slippage will be accounted against qty at order time (see below)
 
 			// stop proposal (signal stop or 2×ATR fallback)
 			stopPx := sig.StopPrice
@@ -432,32 +440,37 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 				}
 			}
 			ms := risk.MarketState{
-				Equity:              math.Max(curEq, 1),
-				Price:               fillPrice,
-				ATR:                 atr,
-				StopPrice:           stopPx,
-				Side:                sig.Side,
-				VolRegime:           ctx.VolRegime[i],
-				ADX:                 ctx.ADX[i],
-				FundingZ:            ctx.FundingZ[i],
-				VolAnnualizedPct:    risk.AnnualizedVolPct(atr, fillPrice, intervalH),
-				PortfolioHeatPct:    openHeat(),
+				Equity:                 math.Max(curEq, 1),
+				Price:                  fillPrice,
+				ATR:                    atr,
+				StopPrice:              stopPx,
+				Side:                   sig.Side,
+				VolRegime:              ctx.VolRegime[i],
+				ADX:                    ctx.ADX[i],
+				FundingZ:               ctx.FundingZ[i],
+				VolAnnualizedPct:       risk.AnnualizedVolPct(atr, fillPrice, intervalH),
+				PortfolioHeatPct:       openHeat(),
 				PortfolioCorrelatedPct: corrHeat,
-				EquityDDPct:         -ddPct, // positive number
+				EquityDDPct:            -ddPct, // positive number
 			}
 
-			// ── pyramiding: count same-side units ──
-			sameSideUnits := 0
+			// ── pyramiding: count same-side units (logical entries) ──
+			// When satellite splits an entry into 2 positions (core+sat), count logical entries = ceil(units/ satCount)
+			// Simpler: use earliest.Units as pyramid count for its side; totalHeat for limit still sums all.
 			sameSideHeat := 0.0
 			var earliest *Position
 			for _, p := range positions {
 				if p.Side == sig.Side {
-					sameSideUnits += p.Units
 					sameSideHeat += p.RiskPct
 					if earliest == nil {
 						earliest = p
 					}
 				}
+			}
+			sameSideUnits := 0
+			if earliest != nil {
+				sameSideUnits = earliest.Units
+				// If satellite split active, the total Units is ~2× logical, adjust maxUnits logic by using earliest only
 			}
 			hasSameSide := earliest != nil
 			if hasSameSide {
@@ -490,8 +503,10 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					}
 					if dec.Accept && dec.Qty > 0 {
 						fee := fillPrice * dec.Qty * eng.FeeBps / 10000.0
+						slipCost := slipAmt * dec.Qty
 						equity -= fee
 						totalFee += fee
+						totalSlippage += slipCost
 						// risk_neutral: total risk stays near base, so don't sum full pyramid risk
 						if lim.PyramidingRiskNeutral {
 							// keep total heat constant: pyramid is funded by trailing existing stop to breakeven
@@ -525,8 +540,10 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 				dec := risk.Size(ms, lim)
 				if dec.Accept && dec.Qty > 0 {
 					fee := fillPrice * dec.Qty * eng.FeeBps / 10000.0
+					slipCost := slipAmt * dec.Qty
 					equity -= fee
 					totalFee += fee
+					totalSlippage += slipCost
 					if lim.SatelliteEnabled && lim.SatelliteAlloc > 0 && lim.SatelliteAlloc < 1 {
 						// split total qty into core (70%) and satellite (30%): satellite holds for large winners +5R/+10R
 						coreQty := dec.Qty * (1 - lim.SatelliteAlloc)
@@ -542,8 +559,8 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
 							StopPrice: stopPx, Units: 1, EntryBarIdx: i,
 							RiskPct: coreRisk, Leverage: coreLev,
-							Notional: coreNotional, RiskAmount: coreRisk/100*ms.Equity,
-							SizingLog: logFactors(dec) + " | core 70%",
+							Notional: coreNotional, RiskAmount: coreRisk / 100 * ms.Equity,
+							SizingLog:   logFactors(dec) + " | core 70%",
 							IsSatellite: false, DonExitLen: 20,
 						}
 						satPos := &Position{
@@ -551,8 +568,8 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
 							StopPrice: stopPx, Units: 1, EntryBarIdx: i,
 							RiskPct: satRisk, Leverage: satLev,
-							Notional: satNotional, RiskAmount: satRisk/100*ms.Equity,
-							SizingLog: logFactors(dec) + " | satellite 30% (wide Don55)",
+							Notional: satNotional, RiskAmount: satRisk / 100 * ms.Equity,
+							SizingLog:   logFactors(dec) + " | satellite 30% (wide Don55)",
 							IsSatellite: true, DonExitLen: 55,
 						}
 						positions = append(positions, corePos, satPos)
@@ -563,7 +580,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							StopPrice: stopPx, Units: 1, EntryBarIdx: i,
 							RiskPct: dec.RiskPct, Leverage: dec.Leverage,
 							Notional: dec.Notional, RiskAmount: dec.RiskAmount,
-							SizingLog: logFactors(dec),
+							SizingLog:  logFactors(dec),
 							DonExitLen: 20,
 						}
 						positions = append(positions, pos)

@@ -9,31 +9,31 @@ import (
 
 // Root config mirroring default.yaml
 type Config struct {
-	General    General    `yaml:"general"`
-	Costs      Costs      `yaml:"costs"`
-	Risk       Risk       `yaml:"risk"`
-	Portfolio  Portfolio  `yaml:"portfolio"`
-	LeverageCfg LeverageCfg `yaml:"leverage"`
-	Trend      TrendCfg    `yaml:"trend"`
-	ATRConf    ATRCfg      `yaml:"atr"`
-	Pyramiding PyramidingCfg `yaml:"pyramiding"`
-	Profit     ProfitCfg     `yaml:"profit"`
-	Regime     RegimeCfg     `yaml:"regime"`
-	Volatility VolatilityCfg `yaml:"volatility"`
-	Drawdown   DrawdownCfg   `yaml:"drawdown"`
-	Funding    FundingCfg    `yaml:"funding"`
+	General      General         `yaml:"general"`
+	Costs        Costs           `yaml:"costs"`
+	Risk         Risk            `yaml:"risk"`
+	Portfolio    Portfolio       `yaml:"portfolio"`
+	LeverageCfg  LeverageCfg     `yaml:"leverage"`
+	Trend        TrendCfg        `yaml:"trend"`
+	ATRConf      ATRCfg          `yaml:"atr"`
+	Pyramiding   PyramidingCfg   `yaml:"pyramiding"`
+	Profit       ProfitCfg       `yaml:"profit"`
+	Regime       RegimeCfg       `yaml:"regime"`
+	Volatility   VolatilityCfg   `yaml:"volatility"`
+	Drawdown     DrawdownCfg     `yaml:"drawdown"`
+	Funding      FundingCfg      `yaml:"funding"`
 	OpenInterest OpenInterestCfg `yaml:"open_interest"`
-	Backtest   Backtest   `yaml:"backtest"`
-	VariantA   VariantA   `yaml:"variant_a"`
-	VariantB   VariantB   `yaml:"variant_b"`
-	VariantC   VariantC   `yaml:"variant_c"`
-	VariantD   VariantD   `yaml:"variant_d"`
-	Compare    Compare    `yaml:"compare"`
-	WalkForward WalkForward `yaml:"walk_forward"`
-	MonteCarlo MonteCarlo `yaml:"monte_carlo"`
-	Report     Report     `yaml:"report"`
-	Data       Data       `yaml:"data"`
-	Orderly    Orderly    `yaml:"orderly"`
+	Backtest     Backtest        `yaml:"backtest"`
+	VariantA     VariantA        `yaml:"variant_a"`
+	VariantB     VariantB        `yaml:"variant_b"`
+	VariantC     VariantC        `yaml:"variant_c"`
+	VariantD     VariantD        `yaml:"variant_d"`
+	Compare      Compare         `yaml:"compare"`
+	WalkForward  WalkForward     `yaml:"walk_forward"`
+	MonteCarlo   MonteCarlo      `yaml:"monte_carlo"`
+	Report       Report          `yaml:"report"`
+	Data         Data            `yaml:"data"`
+	Orderly      Orderly         `yaml:"orderly"`
 }
 
 type General struct {
@@ -57,19 +57,19 @@ type Costs struct {
 // by market riskiness (vol regime, ADX, funding z, drawdown).
 // Supporta sia spec legacy (max_risk_per_trade_pct) che nuovo spec (base/min/max 0.01/0.0025/0.02).
 type Risk struct {
-	MaxRiskPerTradePct  float64 `yaml:"max_risk_per_trade_pct"`   // legacy: 2.0 = max 2%
-	Base                float64 `yaml:"base"`                     // new spec: 0.01 = 1% base
-	Min                 float64 `yaml:"min"`                      // new spec: 0.0025 = 0.25% min
-	Max                 float64 `yaml:"max"`                      // new spec: 0.02 = 2% max
-	MaxHeatPct          float64 `yaml:"max_portfolio_heat_pct"`   // legacy heat
-	MaxLeverage         float64 `yaml:"max_leverage"`             // HARD cap (e.g. 5)
-	MinLeverageCap      float64 `yaml:"min_leverage_cap"`         // floor for dynamic cap
-	MaxNotional         float64 `yaml:"max_notional"`             // 0 = disabled
-	VolTargetPct        float64 `yaml:"vol_target_pct"`           // annualized vol target
-	KellyCapPct         float64 `yaml:"kelly_cap_pct"`            // 0 = disabled
-	DDDeleverageStart   float64 `yaml:"dd_deleverage_start_pct"`  // start scaling risk at this drawdown
-	DDFlatPct           float64 `yaml:"dd_flat_pct"`              // risk → 0 at this drawdown
-	ADXSoftThreshold    float64 `yaml:"adx_soft_threshold"`       // weak trend → lower lev cap
+	MaxRiskPerTradePct float64 `yaml:"max_risk_per_trade_pct"`  // legacy: 2.0 = max 2%
+	Base               float64 `yaml:"base"`                    // new spec: 0.01 = 1% base
+	Min                float64 `yaml:"min"`                     // new spec: 0.0025 = 0.25% min
+	Max                float64 `yaml:"max"`                     // new spec: 0.02 = 2% max
+	MaxHeatPct         float64 `yaml:"max_portfolio_heat_pct"`  // legacy heat
+	MaxLeverage        float64 `yaml:"max_leverage"`            // HARD cap (e.g. 5)
+	MinLeverageCap     float64 `yaml:"min_leverage_cap"`        // floor for dynamic cap
+	MaxNotional        float64 `yaml:"max_notional"`            // 0 = disabled
+	VolTargetPct       float64 `yaml:"vol_target_pct"`          // annualized vol target
+	KellyCapPct        float64 `yaml:"kelly_cap_pct"`           // 0 = disabled
+	DDDeleverageStart  float64 `yaml:"dd_deleverage_start_pct"` // start scaling risk at this drawdown
+	DDFlatPct          float64 `yaml:"dd_flat_pct"`             // risk → 0 at this drawdown
+	ADXSoftThreshold   float64 `yaml:"adx_soft_threshold"`      // weak trend → lower lev cap
 }
 
 // New spec top-level sections — per massimizzare Expectancy × Skew × Compounding
@@ -116,8 +116,8 @@ type OpenInterestCfg struct {
 }
 type Portfolio struct {
 	MaxPortfolioHeatPct float64 `yaml:"max_portfolio_heat_pct"` // legacy
-	MaxOpenRisk         float64 `yaml:"max_open_risk"`         // new spec: 0.03 = 3%
-	MaxCorrelatedRisk   float64 `yaml:"max_correlated_risk"`   // new spec: 0.02 = 2%
+	MaxOpenRisk         float64 `yaml:"max_open_risk"`          // new spec: 0.03 = 3%
+	MaxCorrelatedRisk   float64 `yaml:"max_correlated_risk"`    // new spec: 0.02 = 2%
 	MaxCorrExposure     int     `yaml:"max_corr_exposure"`
 	CrashBrakeDropPct   float64 `yaml:"crash_brake_drop_pct"`
 }
@@ -129,48 +129,48 @@ type Backtest struct {
 	CommissionModel    string  `yaml:"commission_model"`
 }
 type VariantA struct {
-	Name         string  `yaml:"name"`
-	DonchianEntry int    `yaml:"donchian_entry"`
-	DonchianExit  int    `yaml:"donchian_exit"`
-	DonchianAlt   int    `yaml:"donchian_alt"`
-	ATRPeriod    int     `yaml:"atr_period"`
-	ATRStopMult  float64 `yaml:"atr_stop_mult"`
-	RiskPct      float64 `yaml:"risk_pct"`
-	SMAFilter    int     `yaml:"sma_filter"`
-	UseEMAFilter bool    `yaml:"use_ema_filter"`
+	Name          string  `yaml:"name"`
+	DonchianEntry int     `yaml:"donchian_entry"`
+	DonchianExit  int     `yaml:"donchian_exit"`
+	DonchianAlt   int     `yaml:"donchian_alt"`
+	ATRPeriod     int     `yaml:"atr_period"`
+	ATRStopMult   float64 `yaml:"atr_stop_mult"`
+	RiskPct       float64 `yaml:"risk_pct"`
+	SMAFilter     int     `yaml:"sma_filter"`
+	UseEMAFilter  bool    `yaml:"use_ema_filter"`
 }
 type VariantB struct {
-	Name            string  `yaml:"name"`
-	DonchianEntry   int     `yaml:"donchian_entry"`
-	DonchianExit    int     `yaml:"donchian_exit"`
-	DonchianAlt     int     `yaml:"donchian_alt"`
-	ATRPeriod       int     `yaml:"atr_period"`
-	ATRStopMult     float64 `yaml:"atr_stop_mult"`
-	RiskPct         float64 `yaml:"risk_pct"`
-	ADXPeriod       int     `yaml:"adx_period"`
-	ADXThreshold    float64 `yaml:"adx_threshold"`
-	EMAFast         int     `yaml:"ema_fast"`
-	EMASlow         int     `yaml:"ema_slow"`
-	VolLookback     int     `yaml:"vol_regime_lookback"`
-	VolLowPct       float64 `yaml:"vol_regime_low_pct"`
-	VolHighPct      float64 `yaml:"vol_regime_high_pct"`
+	Name          string  `yaml:"name"`
+	DonchianEntry int     `yaml:"donchian_entry"`
+	DonchianExit  int     `yaml:"donchian_exit"`
+	DonchianAlt   int     `yaml:"donchian_alt"`
+	ATRPeriod     int     `yaml:"atr_period"`
+	ATRStopMult   float64 `yaml:"atr_stop_mult"`
+	RiskPct       float64 `yaml:"risk_pct"`
+	ADXPeriod     int     `yaml:"adx_period"`
+	ADXThreshold  float64 `yaml:"adx_threshold"`
+	EMAFast       int     `yaml:"ema_fast"`
+	EMASlow       int     `yaml:"ema_slow"`
+	VolLookback   int     `yaml:"vol_regime_lookback"`
+	VolLowPct     float64 `yaml:"vol_regime_low_pct"`
+	VolHighPct    float64 `yaml:"vol_regime_high_pct"`
 }
 type VariantC struct {
-	Name                string  `yaml:"name"`
-	DonchianEntry       int     `yaml:"donchian_entry"`
-	DonchianExit        int     `yaml:"donchian_exit"`
-	ATRPeriod           int     `yaml:"atr_period"`
-	ATRStopMult         float64 `yaml:"atr_stop_mult"`
-	RiskPct             float64 `yaml:"risk_pct"`
-	ADXPeriod           int     `yaml:"adx_period"`
-	ADXThreshold        float64 `yaml:"adx_threshold"`
-	EMAFast             int     `yaml:"ema_fast"`
-	EMASlow             int     `yaml:"ema_slow"`
-	FundingZThreshold   float64 `yaml:"funding_z_threshold"`
-	FundingZLookback    int     `yaml:"funding_z_lookback"`
-	OIDeltaThreshold    float64 `yaml:"oi_delta_threshold"`
-	VolumeMult          float64 `yaml:"volume_mult"`
-	VolumeSMA           int     `yaml:"volume_sma"`
+	Name              string  `yaml:"name"`
+	DonchianEntry     int     `yaml:"donchian_entry"`
+	DonchianExit      int     `yaml:"donchian_exit"`
+	ATRPeriod         int     `yaml:"atr_period"`
+	ATRStopMult       float64 `yaml:"atr_stop_mult"`
+	RiskPct           float64 `yaml:"risk_pct"`
+	ADXPeriod         int     `yaml:"adx_period"`
+	ADXThreshold      float64 `yaml:"adx_threshold"`
+	EMAFast           int     `yaml:"ema_fast"`
+	EMASlow           int     `yaml:"ema_slow"`
+	FundingZThreshold float64 `yaml:"funding_z_threshold"`
+	FundingZLookback  int     `yaml:"funding_z_lookback"`
+	OIDeltaThreshold  float64 `yaml:"oi_delta_threshold"`
+	VolumeMult        float64 `yaml:"volume_mult"`
+	VolumeSMA         int     `yaml:"volume_sma"`
 }
 type VariantD struct {
 	Name              string  `yaml:"name"`
@@ -208,19 +208,19 @@ type WalkForward struct {
 	Anchored   bool    `yaml:"anchored"`
 }
 type MonteCarlo struct {
-	Runs             int     `yaml:"runs"`
-	PerturbationPct  float64 `yaml:"perturbation_pct"`
-	BlockBootstrap   bool    `yaml:"block_bootstrap"`
-	BlockSize        int     `yaml:"block_size"`
-	Seed             int64   `yaml:"seed"`
+	Runs            int     `yaml:"runs"`
+	PerturbationPct float64 `yaml:"perturbation_pct"`
+	BlockBootstrap  bool    `yaml:"block_bootstrap"`
+	BlockSize       int     `yaml:"block_size"`
+	Seed            int64   `yaml:"seed"`
 }
 type Report struct {
-	TitlePrefix        string   `yaml:"title_prefix"`
-	IncludeTrades      bool     `yaml:"include_trades"`
-	MaxTradesInTable   int      `yaml:"max_trades_in_table"`
-	Theme              string   `yaml:"theme"`
-	EmbedLightweightCharts bool `yaml:"embed_lightweight_charts"`
-	ComparisonMetrics  []string `yaml:"comparison_metrics"`
+	TitlePrefix            string   `yaml:"title_prefix"`
+	IncludeTrades          bool     `yaml:"include_trades"`
+	MaxTradesInTable       int      `yaml:"max_trades_in_table"`
+	Theme                  string   `yaml:"theme"`
+	EmbedLightweightCharts bool     `yaml:"embed_lightweight_charts"`
+	ComparisonMetrics      []string `yaml:"comparison_metrics"`
 }
 type Data struct {
 	BinanceBase       string `yaml:"binance_base"`
@@ -231,13 +231,13 @@ type Data struct {
 	OIPeriod          string `yaml:"oi_period"`
 }
 type Orderly struct {
-	Mainnet    string            `yaml:"mainnet"`
-	Testnet    string            `yaml:"testnet"`
-	WSMainnet  string            `yaml:"ws_mainnet"`
-	DefaultChain string          `yaml:"default_chain"`
-	SymbolsMap map[string]string `yaml:"symbols_map"`
-	Leverage   int               `yaml:"leverage"`
-	SlippageBps int              `yaml:"slippage_bps"`
+	Mainnet      string            `yaml:"mainnet"`
+	Testnet      string            `yaml:"testnet"`
+	WSMainnet    string            `yaml:"ws_mainnet"`
+	DefaultChain string            `yaml:"default_chain"`
+	SymbolsMap   map[string]string `yaml:"symbols_map"`
+	Leverage     int               `yaml:"leverage"`
+	SlippageBps  int               `yaml:"slippage_bps"`
 }
 
 func Load(path string) (*Config, error) {
@@ -334,21 +334,14 @@ func (c *Config) IsDrawdownAdaptive() bool {
 	return c.Risk.DDDeleverageStart != 0
 }
 func (c *Config) IsFundingFilter() bool {
-	if c.Funding.Filter {
-		return true
-	}
-	// legacy
-	return c.VariantD.FundingZThreshold != 0
+	// new spec funding.filter explicitly controls (false = solo costo, non blocca entry)
+	return c.Funding.Filter
 }
 func (c *Config) IsOpenInterestFilter() bool {
-	if c.OpenInterest.Filter {
-		return true
-	}
-	return c.VariantD.OIDeltaThreshold != 0
+	// new spec open_interest.filter
+	return c.OpenInterest.Filter
 }
 func (c *Config) IsRegimeFilter() bool {
-	if c.Regime.BtcFilter {
-		return true
-	}
-	return c.VariantB.ADXThreshold != 0
+	// new spec regime.btc_filter
+	return c.Regime.BtcFilter
 }

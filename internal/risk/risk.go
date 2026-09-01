@@ -9,75 +9,75 @@ import (
 
 // MarketState snapshot at sizing time.
 type MarketState struct {
-	Equity              float64 // current equity (realized + unrealized marked)
-	Price               float64 // entry reference price
-	ATR                 float64
-	StopPrice           float64 // proposed stop (absolute price)
-	Side                int     // 1 long, -1 short
-	VolRegime           float64 // ATR percentile 0-100 (NaN unknown)
-	ADX                 float64 // NaN unknown
-	FundingZ            float64 // NaN unknown
-	VolAnnualizedPct    float64 // realized vol annualized % (0 unknown)
-	PortfolioHeatPct    float64 // sum of open positions risk % (total)
+	Equity                 float64 // current equity (realized + unrealized marked)
+	Price                  float64 // entry reference price
+	ATR                    float64
+	StopPrice              float64 // proposed stop (absolute price)
+	Side                   int     // 1 long, -1 short
+	VolRegime              float64 // ATR percentile 0-100 (NaN unknown)
+	ADX                    float64 // NaN unknown
+	FundingZ               float64 // NaN unknown
+	VolAnnualizedPct       float64 // realized vol annualized % (0 unknown)
+	PortfolioHeatPct       float64 // sum of open positions risk % (total)
 	PortfolioCorrelatedPct float64 // sum of same-side correlated risk %
-	EquityDDPct         float64 // current drawdown from peak, positive number
+	EquityDDPct            float64 // current drawdown from peak, positive number
 }
 
 // RiskLimits — base/min/max adaptive, dynamic leverage, heat, satellite
 type RiskLimits struct {
-	RiskPerTradePct    float64 // legacy MAX (alias for MaxRiskPct)
-	BaseRiskPct        float64 // new spec: base 1.0% (0.01)
-	MinRiskPct         float64 // new spec: min 0.25% (0.0025)
-	MaxRiskPct         float64 // new spec: max 2.0% (0.02)
-	MaxHeatPct         float64 // max_open_risk: 3% total
-	MaxCorrelatedPct   float64 // max_correlated_risk: 2% same side
-	MaxLeverage        float64 // HARD cap, 5
-	MinLeverageCap     float64
-	MaxNotional        float64
-	VolTargetPct       float64
-	KellyCapPct        float64
-	DDDeleverageStart  float64
-	DDFlatPct          float64
-	ADXSoftThreshold   float64
-	AdaptiveVol        bool // volatility adaptive_risk
-	AdaptiveDD         bool // drawdown adaptive_risk
+	RiskPerTradePct       float64 // legacy MAX (alias for MaxRiskPct)
+	BaseRiskPct           float64 // new spec: base 1.0% (0.01)
+	MinRiskPct            float64 // new spec: min 0.25% (0.0025)
+	MaxRiskPct            float64 // new spec: max 2.0% (0.02)
+	MaxHeatPct            float64 // max_open_risk: 3% total
+	MaxCorrelatedPct      float64 // max_correlated_risk: 2% same side
+	MaxLeverage           float64 // HARD cap, 5
+	MinLeverageCap        float64
+	MaxNotional           float64
+	VolTargetPct          float64
+	KellyCapPct           float64
+	DDDeleverageStart     float64
+	DDFlatPct             float64
+	ADXSoftThreshold      float64
+	AdaptiveVol           bool // volatility adaptive_risk
+	AdaptiveDD            bool // drawdown adaptive_risk
 	PyramidingRiskNeutral bool
-	SatelliteEnabled   bool
-	SatelliteAlloc     float64 // 0.30
+	SatelliteEnabled      bool
+	SatelliteAlloc        float64 // 0.30
 }
 
 // SizingDecision full audit trail.
 type SizingDecision struct {
-	Accept       bool
-	Qty          float64
-	Notional     float64
-	RiskAmount   float64
-	RiskPct      float64 // EFFECTIVE risk after all caps
-	StopDist     float64
-	Leverage     float64 // notional / equity — DERIVED, never fixed
-	LeverageCap  float64 // dynamic cap applied
-	Factors      []string
+	Accept      bool
+	Qty         float64
+	Notional    float64
+	RiskAmount  float64
+	RiskPct     float64 // EFFECTIVE risk after all caps
+	StopDist    float64
+	Leverage    float64 // notional / equity — DERIVED, never fixed
+	LeverageCap float64 // dynamic cap applied
+	Factors     []string
 }
 
 func DefaultLimits() RiskLimits {
 	return RiskLimits{
-		RiskPerTradePct:   2.0,
-		BaseRiskPct:       1.0,  // 0.01 user spec
-		MinRiskPct:        0.25, // 0.0025
-		MaxRiskPct:        2.0,  // 0.02
-		MaxHeatPct:        3.0,  // user spec 0.03
-		MaxCorrelatedPct:  2.0,  // user spec 0.02
-		MaxLeverage:       5.0,  // user spec 5
-		MinLeverageCap:    0.7,
-		VolTargetPct:      50.0,
-		DDDeleverageStart: 10.0,
-		DDFlatPct:         25.0,
-		ADXSoftThreshold:  20.0, // user spec adx_min 20
-		AdaptiveVol:       true,
-		AdaptiveDD:        true,
+		RiskPerTradePct:       2.0,
+		BaseRiskPct:           1.0,  // 0.01 user spec
+		MinRiskPct:            0.25, // 0.0025
+		MaxRiskPct:            2.0,  // 0.02
+		MaxHeatPct:            3.0,  // user spec 0.03
+		MaxCorrelatedPct:      2.0,  // user spec 0.02
+		MaxLeverage:           5.0,  // user spec 5
+		MinLeverageCap:        0.7,
+		VolTargetPct:          50.0,
+		DDDeleverageStart:     10.0,
+		DDFlatPct:             25.0,
+		ADXSoftThreshold:      20.0, // user spec adx_min 20
+		AdaptiveVol:           true,
+		AdaptiveDD:            true,
 		PyramidingRiskNeutral: true,
-		SatelliteEnabled:  false, // default false for tests; enabled via config profit.satellite.enabled
-		SatelliteAlloc:    0.30,
+		SatelliteEnabled:      false, // default false for tests; enabled via config profit.satellite.enabled
+		SatelliteAlloc:        0.30,
 	}
 }
 
@@ -351,44 +351,44 @@ func LimitsFromConfig(cfg *config.Config, variant string) RiskLimits {
 	if cfg.Risk.ADXSoftThreshold > 0 {
 		lim.ADXSoftThreshold = cfg.Risk.ADXSoftThreshold
 	}
-	// new spec adaptive flags
-	if cfg.Volatility.AdaptiveRisk {
-		lim.AdaptiveVol = true
-	}
-	if cfg.Drawdown.AdaptiveRisk {
-		lim.AdaptiveDD = true
-	}
-	// pyramiding risk_neutral
-	if cfg.Pyramiding.RiskNeutral {
-		lim.PyramidingRiskNeutral = true
-	}
-	// satellite
-	if cfg.Profit.Satellite.Enabled {
-		lim.SatelliteEnabled = true
+	// new spec adaptive flags — explicit sync with config (yaml true by default)
+	lim.AdaptiveVol = cfg.Volatility.AdaptiveRisk
+	lim.AdaptiveDD = cfg.Drawdown.AdaptiveRisk
+	// pyramiding risk_neutral — explicit (config true by default)
+	lim.PyramidingRiskNeutral = cfg.Pyramiding.RiskNeutral
+	// satellite — explicit
+	lim.SatelliteEnabled = cfg.Profit.Satellite.Enabled
+	if lim.SatelliteEnabled {
 		lim.SatelliteAlloc = cfg.Profit.Satellite.Allocation
 		if lim.SatelliteAlloc == 0 {
 			lim.SatelliteAlloc = 0.30
 		}
+	} else {
+		lim.SatelliteAlloc = 0
 	}
-	// variant risk pct is the per-variant MAX (e.g. A 2%, D 1.2%)
+	// variant risk pct is the per-variant MAX and influences Base/Max risk window
 	switch variant {
 	case "A":
 		if cfg.VariantA.RiskPct > 0 {
 			lim.RiskPerTradePct = cfg.VariantA.RiskPct
+			lim.MaxRiskPct = cfg.VariantA.RiskPct
 		}
 	case "B":
 		if cfg.VariantB.RiskPct > 0 {
 			lim.RiskPerTradePct = cfg.VariantB.RiskPct
+			lim.MaxRiskPct = cfg.VariantB.RiskPct
 		}
 		// B: no vol targeting, regime filter handles risk itself
 		lim.VolTargetPct = 0
 	case "C":
 		if cfg.VariantC.RiskPct > 0 {
 			lim.RiskPerTradePct = cfg.VariantC.RiskPct
+			lim.MaxRiskPct = cfg.VariantC.RiskPct
 		}
 	case "D":
 		if cfg.VariantD.RiskPct > 0 {
 			lim.RiskPerTradePct = cfg.VariantD.RiskPct
+			lim.MaxRiskPct = cfg.VariantD.RiskPct
 		}
 		if cfg.VariantD.VolTargetPct > 0 {
 			lim.VolTargetPct = cfg.VariantD.VolTargetPct
@@ -397,9 +397,19 @@ func LimitsFromConfig(cfg *config.Config, variant string) RiskLimits {
 			lim.KellyCapPct = cfg.VariantD.KellyCapPct
 		}
 	}
+	// ensure Base <= Max (clamp base if variant lowers max below base)
+	if lim.BaseRiskPct > lim.MaxRiskPct {
+		lim.BaseRiskPct = lim.MaxRiskPct
+	}
+	if lim.MinRiskPct > lim.MaxRiskPct {
+		lim.MinRiskPct = lim.MaxRiskPct * 0.125 // 0.25/2.0 ratio preserved
+	}
 	// global risk_per_trade overrides variant if smaller (defense in depth)
 	if cfg.Risk.MaxRiskPerTradePct > 0 && lim.RiskPerTradePct > cfg.Risk.MaxRiskPerTradePct {
 		lim.RiskPerTradePct = cfg.Risk.MaxRiskPerTradePct
+	}
+	if cfg.Risk.Max > 0 && lim.MaxRiskPct > cfg.Risk.Max*100 {
+		lim.MaxRiskPct = cfg.Risk.Max * 100
 	}
 	return lim
 }
