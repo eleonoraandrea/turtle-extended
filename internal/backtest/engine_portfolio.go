@@ -26,7 +26,7 @@ type symState struct {
 	positions  []*Position
 	cursor     int
 	brakeUntil int
-	lastClose  float64
+	lastClose  float64 // close dell'ultima barra processata (0 = nessuna)
 	lastStop   struct {
 		valid      bool
 		side       int
@@ -34,11 +34,18 @@ type symState struct {
 	}
 }
 
-// RunPortfolio — engine multi-simbolo con UNA equity e heat condivisi.
-// Timeline: union dei timestamp; ogni simbolo processa la propria barra quando
-// il timestamp combacia. Invariante: con un solo simbolo riproduce engine.Run.
+// RunPortfolio adatta il loop di engine.Run (engine.go) al caso multi-simbolo.
+// REGOLA DI SINCRONIZZAZIONE: ogni modifica alle semantiche di Run (uscite, fill,
+// sizing, funding) va replicata qui. I test invariante (TestRunPortfolioSingleSymbol
+// Invariant*) su dati reali BTC/ETH sono il tripwire: falliscono se i due motori
+// divergono. NON rifattorizzare Run mentre questo file esiste senza aggiornare
+// anche qui + i test.
 func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strategy, cfg *config.Config, eng EngineConfig) *Result {
-	res := &Result{Symbol: "PORTFOLIO", Variant: eng.Variant, InitialCapital: eng.InitialCapital, FinalEquity: eng.InitialCapital}
+	sym := eng.Symbol
+	if sym == "" {
+		sym = "PORTFOLIO"
+	}
+	res := &Result{Symbol: sym, Variant: eng.Variant, InitialCapital: eng.InitialCapital, FinalEquity: eng.InitialCapital}
 	symbols := make([]string, 0, len(barsMap))
 	for s := range barsMap {
 		symbols = append(symbols, s)
@@ -101,11 +108,11 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 			donExitH: indicators.DonchianHigh(high, exitLen), donExitL: indicators.DonchianLow(low, exitLen),
 			donExitH55: indicators.DonchianHigh(high, 55), donExitL55: indicators.DonchianLow(low, 55),
 		}
-		if len(bars) > 0 {
-			st.lastClose = bars[len(bars)-1].Close
-		}
 		states = append(states, st)
 	}
+
+	// barra di riferimento per metriche/report (buy&hold del primo simbolo in ordine alfabetico)
+	res.Bars = barsMap[symbols[0]]
 
 	// timeline: union ordinata dei timestamp
 	seen := map[time.Time]bool{}
@@ -197,6 +204,7 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 		})
 	}
 
+	// contratto dati: barre per simbolo ordinate e con timestamp UNICI (i duplicati verrebbero skippati)
 	for _, ts := range timeline {
 		for _, st := range states {
 			if st.cursor >= len(st.bars) || !st.bars[st.cursor].Time.Equal(ts) {
@@ -717,8 +725,10 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 			}
 		}
 		equityCurve = append(equityCurve, EquityPoint{
-			Time: ts, Equity: curEq, Drawdown: dd, Price: price,
-			Heat: openHeatAll(), Leverage: openNotionalAll() / math.Max(curEq, 1),
+			Time: ts, Equity: curEq, Drawdown: dd,
+			// close del primo simbolo (ordine alfabetico) che ha processato questo timestamp — riferimento grafico, non prezzo di portafoglio
+			Price: price,
+			Heat:  openHeatAll(), Leverage: openNotionalAll() / math.Max(curEq, 1),
 		})
 	}
 
