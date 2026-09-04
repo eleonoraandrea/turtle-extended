@@ -1,3 +1,0 @@
-configs/btc_opt.yaml data/raw/BTCUSDT_4h.csv A train → CAGR  41.11% DD  -20.08% Sharpe 1.50 Calmar 2.05 trades 382
-configs/btc_opt.yaml data/raw/BTCUSDT_4h.csv A test  → CAGR   8.31% DD  -23.08% Sharpe 0.37 Calmar 0.36 trades 186
-configs/btc_opt.yaml data/raw/BTCUSDT_4h.csv A full  → CAGR  29.55% DD  -23.04% Sharpe 1.15 Calmar 1.28 trades 578
