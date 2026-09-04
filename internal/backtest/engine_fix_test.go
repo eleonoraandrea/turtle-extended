@@ -16,9 +16,9 @@ type scriptStrategy struct {
 	signals map[int]strategy.Signal
 }
 
-func (s *scriptStrategy) Name() string                    { return "script" }
-func (s *scriptStrategy) Variant() string                 { return "A" }
-func (s *scriptStrategy) Warmup() int                     { return 0 }
+func (s *scriptStrategy) Name() string    { return "script" }
+func (s *scriptStrategy) Variant() string { return "A" }
+func (s *scriptStrategy) Warmup() int     { return 0 }
 func (s *scriptStrategy) Prepare(bars data.Bars) *strategy.Context {
 	return strategy.PrepareCommon(bars, s.cfg, "A")
 }

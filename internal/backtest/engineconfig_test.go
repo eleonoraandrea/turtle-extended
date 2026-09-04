@@ -92,3 +92,19 @@ variant_a:
 		t.Errorf("B PyramidingMax = %d, want 0 (pyramiding.enabled false)", ecB.PyramidingMax)
 	}
 }
+
+func TestEngineConfigFromLowercaseVariant(t *testing.T) {
+	cfg, err := config.Load("../../configs/default.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// variant minuscola deve risolvere gli override della variante (D → chandelier)
+	ec := EngineConfigFrom(cfg, "d", "BTCUSDT")
+	if ec.Variant != "D" || ec.TrailMode != "chandelier" {
+		t.Errorf("lowercase variant: got %+v variant/trail, want Variant D + chandelier", ec)
+	}
+	ecA := EngineConfigFrom(cfg, "a", "BTCUSDT")
+	if ecA.Variant != "A" || ecA.TrailMode != "donchian" {
+		t.Errorf("lowercase variant a: got Variant %q TrailMode %q, want A + donchian", ecA.Variant, ecA.TrailMode)
+	}
+}

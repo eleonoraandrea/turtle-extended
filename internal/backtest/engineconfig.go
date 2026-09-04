@@ -1,12 +1,17 @@
 package backtest
 
-import "github.com/atps/atps/internal/config"
+import (
+	"strings"
+
+	"github.com/atps/atps/internal/config"
+)
 
 // EngineConfigFrom — UNICA fonte di verità per EngineConfig.
 // Usata da CLI backtest, bot live e optimizer: ciò che si ottimizza è ciò che gira.
 // Risoluzione: override per-variante (variant_x.engine, yaml inline) > sezione
 // globale backtest:/trend:/pyramiding: > default hardcoded legacy.
 func EngineConfigFrom(cfg *config.Config, variant, symbol string) EngineConfig {
+	variant = strings.ToUpper(variant)
 	var e config.EngineCfg
 	switch variant {
 	case "A":
