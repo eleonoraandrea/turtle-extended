@@ -157,7 +157,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 	if eng.PyramidingMode == "separate" && lim.PyramidingRiskNeutral {
 		res.Warnings = append(res.Warnings, "pyramiding.mode=separate ignora risk_neutral (vale solo per merged)")
 	}
-	if eng.PyramidingMode == "separate" && cfg.Profit.Satellite.Enabled {
+	if eng.PyramidingMode == "separate" && cfg != nil && cfg.Profit.Satellite.Enabled {
 		res.Warnings = append(res.Warnings, "pyramiding.mode=separate disabilita satellite (incompatibile: le gambe usano già exit wide)")
 	}
 
