@@ -567,39 +567,7 @@ func cmdReportDemo() *cobra.Command {
 }
 
 func engineFromCfg(cfg *config.Config, variant, symbol string) backtest.EngineConfig {
-	trailMode := "donchian"
-	if variant == "D" || variant == "d" {
-		trailMode = cfg.VariantD.Engine.TrailMode
-	} else {
-		trailMode = "donchian"
-	}
-	// pyramiding: la nuova spec (pyramiding.enabled/max_additions) vince sulla
-	// legacy backtest.pyramiding_max_units; enabled=false → 0 addizioni.
-	// max_additions conta le ADDIZIONI oltre l'unità iniziale → unità totali = N+1
-	pyrMax := cfg.Backtest.PyramidingMaxUnits
-	if cfg.Pyramiding.Enabled {
-		if cfg.Pyramiding.MaxAdditions > 0 {
-			pyrMax = cfg.Pyramiding.MaxAdditions + 1
-		}
-	} else {
-		pyrMax = 0
-	}
-	donExit := cfg.Trend.DonchianExit
-	if donExit <= 0 {
-		donExit = 20
-	}
-	return backtest.EngineConfig{
-		Variant: variant, Symbol: symbol,
-		InitialCapital: cfg.General.InitialCapital,
-		FeeBps:         cfg.Costs.FeeBps, SlippageBps: cfg.Costs.SlippageBps,
-		Leverage:       cfg.Costs.Leverage,
-		UseNextOpen:    cfg.Backtest.UseNextOpenFill,
-		PyramidingMax:  pyrMax,
-		PyramidStepATR: cfg.Backtest.PyramidStepATR,
-		TrailATRMult:   cfg.Backtest.TrailATRMult,
-		TrailMode:      trailMode,
-		DonExit:        donExit,
-	}
+	return backtest.EngineConfigFrom(cfg, variant, symbol)
 }
 
 // intervalDuration converte l'interval Binance in time.Duration.

@@ -112,6 +112,7 @@ type EngineConfig struct {
 	TrailATRMult   float64
 	TrailMode      string
 	DonExit        int
+	EntryMode      string // close|intrabar (default close; intrabar = fill a livello canale)
 }
 
 func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng EngineConfig) *Result {

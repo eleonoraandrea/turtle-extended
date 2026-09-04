@@ -554,14 +554,7 @@ func (b *Bot) SnapshotResult() *backtest.Result {
 	if len(bars) == 0 {
 		return nil
 	}
-	// run quick backtest on current bars for display
-	res := backtest.Run(bars, b.strat, b.cfg, backtest.EngineConfig{
-		Variant: b.variant, Symbol: b.symbol,
-		InitialCapital: b.cfg.General.InitialCapital,
-		FeeBps:         b.cfg.Costs.FeeBps, SlippageBps: b.cfg.Costs.SlippageBps,
-		Leverage: b.cfg.Risk.MaxLeverage, UseNextOpen: true,
-		PyramidingMax: b.cfg.Backtest.PyramidingMaxUnits, PyramidStepATR: b.cfg.Backtest.PyramidStepATR,
-		TrailATRMult: b.cfg.Backtest.TrailATRMult, TrailMode: "chandelier", DonExit: 20,
-	})
+	// run quick backtest on current bars for display — STESSA engine config del CLI
+	res := backtest.Run(bars, b.strat, b.cfg, backtest.EngineConfigFrom(b.cfg, b.variant, b.symbol))
 	return res
 }
