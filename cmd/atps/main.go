@@ -560,7 +560,10 @@ func cmdPortfolioBacktest() *cobra.Command {
 				fmt.Printf("warn: %s\n", w)
 			}
 			// breakdown per-simbolo (da trade list)
-			type symAgg struct{ trades, winners int; pnl float64 }
+			type symAgg struct {
+				trades, winners int
+				pnl             float64
+			}
 			aggs := map[string]*symAgg{}
 			for _, tr := range res.Trades {
 				a := aggs[tr.Symbol]
