@@ -1,11 +1,11 @@
 # ATPS — Adaptive Turtle Perpetual System (Go) — v2 VALIDATA (2026-09-04)
 # Vinci optimizer v2 grid completa 2592 (train 2020-01→2024-09, test 2024-09→2026-09)
 # Combo: atr1.8 donchian(don0.0) don10 pyr(off) sat0.40 r0.020 entry:close reentry:off dd(10/25)
-# Validazione: reports/V2_VALIDATION.md — baseline: reports/V2_BASELINE_NUMBERS.md
+# Validazione: report rimosso su richiesta 2026-09-04 — in git history prima del commit 0729664
 general:
   initial_capital: 10000.0
   interval: "4h"              # 1h, 4h, 1d
-  symbols: ["BTCUSDT"]        # BTC-focused; ETH/SOL validati con questa config (V2_VALIDATION.md) — compare.symbols resta 3 per il confronto
+  symbols: ["BTCUSDT"]        # BTC-focused; ETH/SOL validati con questa config (report rimosso su richiesta 2026-09-04 — in git history prima del commit 0729664) — compare.symbols resta 3 per il confronto
   orderly_symbols: ["PERP_BTC_USDC"]
   start_time: "2020-01-01"
   end_time: ""
@@ -95,8 +95,8 @@ backtest:
   commission_model: "bps"
 
 # Varianti — BIG IMPROVE: stop 1.8× tight, filtri meno restrittivi, volTarget 50%
-variant_a: # ATPS v2 — vincitore optimizer grid completa 2592 (reports/V2_OPTIMIZE_RUN.txt)
-  name: "Variant A — ATPS v2 (validata, vedi reports/V2_VALIDATION.md)"
+variant_a: # ATPS v2 — vincitore optimizer grid completa 2592 (report rimosso su richiesta 2026-09-04 — in git history prima del commit 0729664)
+  name: "Variant A — ATPS v2 (validazione in git history pre-0729664)"
   donchian_entry: 55          # user spec trend 55
   donchian_exit: 20
   donchian_alt: 20

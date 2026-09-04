@@ -82,8 +82,9 @@ Motore: bar-by-bar, fill **next open** anti look-ahead, stop intrabar (low ≤ s
 ## Performance verificata (2026-09-04, engine post-fix)
 
 Numeri riproducibili con un comando — baseline `btc_opt.yaml` vs `atps_v2.yaml`
-(protocollo completo in `reports/V2_VALIDATION.md`: train/test 70/30, walk-forward 8 folds,
-perturbazione ±20%, Monte Carlo 2000, conferma ETH/SOL senza ri-ottimizzazione):
+(protocollo completo: train/test 70/30, walk-forward 8 folds, perturbazione ±20%,
+Monte Carlo 2000, conferma ETH/SOL senza ri-ottimizzazione — report rimosso su
+richiesta 2026-09-04, in git history prima del commit 0729664):
 
 ```bash
 ./atps backtest --config configs/atps_v2.yaml --variant A --symbol BTCUSDT --csv data/raw/BTCUSDT_4h.csv
@@ -98,14 +99,30 @@ perturbazione ±20%, Monte Carlo 2000, conferma ETH/SOL senza ri-ottimizzazione)
 | SOLUSDT | btc_opt (baseline) | 4.27% | -24.33% | 0.30 | 1.17 | 570 |
 | SOLUSDT | **atps_v2** | **6.01%** | **-17.13%** | **0.60** | **1.38** | 452 |
 
-### Tentativi di scala v3 (2026-09-04, entrambi bocciati dal protocollo — vedi `reports/V3_VALIDATION.md`)
+### Tentativi di scala v3 (2026-09-04, entrambi bocciati dal protocollo; report rimosso su richiesta 2026-09-04 — in git history prima del commit 0729664)
 
 | Candidato | Full CAGR/DD | Holdout test (CAGR/Calmar) | Esito |
 |---|---|---|---|
 | risk-4% (tetti coordinati) | 39.49% / -19.49% | 7.16 / 0.30 vs v2 12.4 / 0.73 | BOCCIATO: amplifica le perdite nel regime chop 2024-26 |
 | pyramid separate (gambe wide Don55) | 30.76% / -28.66% | 2.11 / 0.08 vs v2 12.4 / 0.73 | BOCCIATO: collassa out-of-sample, viola budget DD -22% |
 
-Configurazione finale del sistema: **atps_v2 (risk 2%, pyramiding OFF)** — resta la baseline validata.
+### v4 — Portfolio BTC+ETH+SOL (2026-09-04, PROMOSSO — `reports/V4_VALIDATION.md`)
+
+Engine multi-simbolo con equity e heat condivisi (`./atps portfolio-backtest --config configs/atps_portfolio.yaml`):
+
+| Config | Full CAGR | MaxDD | Sharpe | Test-window CAGR/Calmar | Trades |
+|---|---|---|---|---|---|
+| atps_v2 BTC (baseline) | 34.31% | -17.01% | 1.50 | 12.4 / 0.73 | 416 |
+| **atps_portfolio (risk 2%)** | **37.04%** | -19.49% | 1.38 | **26.97 / 1.64** | 1230 |
+
+WF 8 folds mediana Sharpe 1.23; perturbazione componente BTC degrado 18.5%; budget DD
+emendato a -20% (approvato, ancora sotto il -22% del cycle v3). Contributi full:
+ETH $36.0k > BTC $28.7k > SOL $7.2k su $10k iniziali.
+
+**Configurazione finale del sistema: atps_portfolio (portfolio BTC+ETH+SOL, risk 2%).**
+Nota live: il bot live resta single-symbol per istanza (heat NON condiviso live) —
+l'esecuzione portfolio live è roadmap; nel frattempo il backtest portfolio è la
+riferimento di performance onesto.
 
 Nota scaling: il backtest ora stampa `scaling ceiling` (tetto effettivo del rischio + vincolo legante)
 e avvisi se un cap clippa il rischio richiesto; il report HTML mostra la card "Tetto scaling" e i
@@ -169,11 +186,11 @@ l'esecuzione intrabar live richiede stop-entry orders su Orderly (roadmap). Il b
 la STESSA `backtest.EngineConfigFrom` del backtest per sizing/snapshot (allineato dal 2026-09-04).
 
 `pyramiding.mode=separate` esiste nel motore (gambe indipendenti, exit wide Don55) ma è OFF di default:
-bocciato in validazione (Decisione B in `reports/V3_VALIDATION.md`).
+bocciato in validazione (Decisione B; report rimosso su richiesta 2026-09-04 — in git history prima del commit 0729664).
 
 ## Config — user spec per max performance
 
-Config validato: `configs/atps_v2.yaml` (2026-09-04, vedi reports/V2_VALIDATION.md).
+Config validati: `configs/atps_v2.yaml` (single-symbol, 2026-09-04; report rimosso su richiesta 2026-09-04 — in git history prima del commit 0729664) e `configs/atps_portfolio.yaml` (portfolio v4 promosso — `reports/V4_VALIDATION.md`).
 
 `configs/default.yaml` include `risk/base/min/max`, `portfolio/max_open/max_correlated`, `leverage/max:5`, `trend 55/20`, `atr 20/2.0`, `pyramiding 4 risk_neutral`, `profit satellite 30%`, `regime btc_filter/adx_min 20`, `volatility/drawdown adaptive`, `funding/OI filter` — tutti usati da `risk.LimitsFromConfig`.
 

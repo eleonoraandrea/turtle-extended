@@ -96,7 +96,7 @@ backtest:
 
 # Varianti — BIG IMPROVE: stop 1.8× tight, filtri meno restrittivi, volTarget 50%
 variant_a: # Turtle classico S1 — stop tight per leva più alta a pari 2% risk
-  name: "Variant A — Classic Turtle OPT (post-fix engine, baseline onesta — vedi reports/V2_VALIDATION.md)"
+  name: "Variant A — Classic Turtle OPT (post-fix engine, baseline onesta, validazione in git history pre-0729664)"
   donchian_entry: 55          # user spec trend 55
   donchian_exit: 20
   donchian_alt: 20
