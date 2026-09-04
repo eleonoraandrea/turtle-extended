@@ -29,7 +29,7 @@ func main() {
 Binance per dati, Orderly per live (isolato con -tags live).`,
 	}
 	root.PersistentFlags().StringVar(&cfgPath, "config", "configs/default.yaml", "path to config yaml")
-	root.AddCommand(cmdDownload(), cmdBacktest(), cmdCompare(), cmdWalkForward(), cmdMonteCarlo(), cmdPerturb(), cmdPortfolio(), cmdGenerateDemo(), cmdReportDemo(), cmdTUI(), cmdLive())
+	root.AddCommand(cmdDownload(), cmdBacktest(), cmdCompare(), cmdWalkForward(), cmdMonteCarlo(), cmdPerturb(), cmdPortfolio(), cmdPortfolioBacktest(), cmdGenerateDemo(), cmdReportDemo(), cmdTUI(), cmdLive())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -519,6 +519,80 @@ func cmdPortfolio() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&variant, "variant", "", "A/B/C/D")
 	cmd.Flags().StringVar(&out, "out", "", "")
+	return cmd
+}
+
+func cmdPortfolioBacktest() *cobra.Command {
+	var cfgPath, csvPattern, outHTML string
+	cmd := &cobra.Command{
+		Use:   "portfolio-backtest",
+		Short: "Backtest PORTFOLIO multi-simbolo (equity+heat condivisi)",
+		Run: func(cmd *cobra.Command, args []string) {
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "config load failed (%s): %v\n", cfgPath, err)
+				os.Exit(1)
+			}
+			symbols := cfg.General.Symbols
+			if len(symbols) == 0 {
+				fmt.Fprintf(os.Stderr, "general.symbols vuoto\n")
+				os.Exit(1)
+			}
+			barsMap := map[string]data.Bars{}
+			strats := map[string]strategy.Strategy{}
+			for _, s := range symbols {
+				p := strings.ReplaceAll(csvPattern, "{SYMBOL}", s)
+				bars, err := data.LoadBarsCSV(p)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "csv %s: %v\n", p, err)
+					os.Exit(1)
+				}
+				barsMap[s] = bars
+				strats[s] = strategy.New("A", cfg)
+			}
+			eng := backtest.EngineConfigFrom(cfg, "A", "PORTFOLIO")
+			res := backtest.RunPortfolio(barsMap, strats, cfg, eng)
+			stats := metrics.Compute(res)
+			fmt.Printf("PORTFOLIO %s: Return %.2f%% CAGR %.2f%% Sharpe %.2f Sortino %.2f MaxDD %.2f%% PF %.2f Trades %d Fee $%.2f Funding $%.2f\n",
+				strings.Join(symbols, "+"), stats.ReturnPct, stats.ReturnAnnual, stats.Sharpe, stats.Sortino, stats.MaxDD, stats.ProfitFactor, stats.Trades, stats.TotalFee, stats.TotalFunding)
+			fmt.Printf("scaling ceiling: %.2f%% (%s lega)\n", res.ScalingCeilingPct, res.ScalingBinding)
+			for _, w := range res.Warnings {
+				fmt.Printf("warn: %s\n", w)
+			}
+			// breakdown per-simbolo (da trade list)
+			type symAgg struct{ trades, winners int; pnl float64 }
+			aggs := map[string]*symAgg{}
+			for _, tr := range res.Trades {
+				a := aggs[tr.Symbol]
+				if a == nil {
+					a = &symAgg{}
+					aggs[tr.Symbol] = a
+				}
+				a.trades++
+				a.pnl += tr.PnLNet
+				if tr.PnLNet > 0 {
+					a.winners++
+				}
+			}
+			fmt.Println("per-symbol (da trade list):")
+			for _, s := range symbols {
+				if a, ok := aggs[s]; ok {
+					fmt.Printf("  %s: trades %d, win %d (%.0f%%), PnL netto $%.2f\n", s, a.trades, a.winners, float64(a.winners)/float64(a.trades)*100, a.pnl)
+				}
+			}
+			if outHTML == "" {
+				outHTML = fmt.Sprintf("reports/PORTFOLIO_%s.html", time.Now().Format("20060102_1504"))
+			}
+			if err := report.Generate(outHTML, report.Input{Config: cfg, Bars: barsMap[symbols[0]], Result: res, Stats: stats, Symbol: "PORTFOLIO", Variant: "A", GeneratedAt: time.Now()}); err != nil {
+				fmt.Fprintf(os.Stderr, "report %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("report %s\n", outHTML)
+		},
+	}
+	cmd.Flags().StringVar(&cfgPath, "config", config.DefaultPath(), "path config yaml")
+	cmd.Flags().StringVar(&csvPattern, "csvs", "data/raw/{SYMBOL}_4h.csv", "pattern CSV per simbolo ({SYMBOL} sostituito)")
+	cmd.Flags().StringVar(&outHTML, "out", "", "output html path")
 	return cmd
 }
 
