@@ -804,7 +804,7 @@ func (m Model) runBacktestCmd(symbol, variant, interval string) tea.Cmd {
 		strat := strategy.New(variant, &cfgCopy)
 		trailMode := "donchian"
 		if variant == "D" {
-			trailMode = cfgCopy.VariantD.TrailMode
+			trailMode = cfgCopy.VariantD.Engine.TrailMode
 		}
 		eng := backtest.EngineConfig{
 			Variant: variant, Symbol: symbol,
@@ -858,7 +858,7 @@ func (m Model) runCompareCmd() tea.Cmd {
 				strat := strategy.New(v, cfg)
 				trailMode := "donchian"
 				if v == "D" {
-					trailMode = cfg.VariantD.TrailMode
+					trailMode = cfg.VariantD.Engine.TrailMode
 				}
 				eng := backtest.EngineConfig{Variant: v, Symbol: sym, InitialCapital: cfg.General.InitialCapital, FeeBps: cfg.Costs.FeeBps, SlippageBps: cfg.Costs.SlippageBps, Leverage: cfg.Costs.Leverage, UseNextOpen: true, PyramidingMax: cfg.Backtest.PyramidingMaxUnits, PyramidStepATR: cfg.Backtest.PyramidStepATR, TrailATRMult: cfg.Backtest.TrailATRMult, TrailMode: trailMode, DonExit: 20}
 				res := backtest.Run(bars, strat, cfg, eng)

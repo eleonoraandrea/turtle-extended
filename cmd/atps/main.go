@@ -551,7 +551,7 @@ func cmdReportDemo() *cobra.Command {
 func engineFromCfg(cfg *config.Config, variant, symbol string) backtest.EngineConfig {
 	trailMode := "donchian"
 	if variant == "D" || variant == "d" {
-		trailMode = cfg.VariantD.TrailMode
+		trailMode = cfg.VariantD.Engine.TrailMode
 	} else {
 		trailMode = "donchian"
 	}

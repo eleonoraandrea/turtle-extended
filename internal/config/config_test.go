@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -110,5 +111,93 @@ func TestHelpersFallback(t *testing.T) {
 	c.Risk.Max = 0
 	if c.RiskMaxPct() != 2.0 {
 		t.Fatalf("legacy max")
+	}
+}
+
+func TestVariantEngineCfgInlineAndReEntry(t *testing.T) {
+	yml := `general:
+  initial_capital: 10000.0
+backtest:
+  trail_atr_mult: 2.5
+  pyramid_step_atr: 0.5
+trend:
+  donchian_entry: 55
+  donchian_exit: 20
+pyramiding:
+  enabled: true
+  max_additions: 4
+  risk_neutral: true
+variant_a:
+  name: "A test"
+  atr_stop_mult: 1.6
+  trail_mode: chandelier
+  trail_atr_mult: 3.5
+  don_exit: 10
+  entry_mode: intrabar
+  pyramiding_max_units: 3
+  reentry:
+    enabled: true
+    lookback: 12
+    within_bars: 25
+variant_b:
+  name: "B test"
+variant_d:
+  name: "D test"
+  trail_mode: chandelier
+`
+	path := filepath.Join(t.TempDir(), "cfg.yaml")
+	if err := os.WriteFile(path, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	// inline engine su variant_a
+	if c.VariantA.Engine.TrailMode != "chandelier" {
+		t.Errorf("VariantA.Engine.TrailMode = %q, want chandelier", c.VariantA.Engine.TrailMode)
+	}
+	if c.VariantA.Engine.TrailATRMult != 3.5 {
+		t.Errorf("VariantA.Engine.TrailATRMult = %v, want 3.5", c.VariantA.Engine.TrailATRMult)
+	}
+	if c.VariantA.Engine.DonExit != 10 {
+		t.Errorf("VariantA.Engine.DonExit = %v, want 10", c.VariantA.Engine.DonExit)
+	}
+	if c.VariantA.Engine.EntryMode != "intrabar" {
+		t.Errorf("VariantA.Engine.EntryMode = %q, want intrabar", c.VariantA.Engine.EntryMode)
+	}
+	if c.VariantA.Engine.PyramidingUnits != 3 {
+		t.Errorf("VariantA.Engine.PyramidingUnits = %v, want 3", c.VariantA.Engine.PyramidingUnits)
+	}
+	// reentry
+	if !c.VariantA.ReEntry.Enabled || c.VariantA.ReEntry.Lookback != 12 || c.VariantA.ReEntry.WithinBars != 25 {
+		t.Errorf("VariantA.ReEntry = %+v, want enabled/12/25", c.VariantA.ReEntry)
+	}
+	// variant_d legacy: trail_mode ora vive in Engine
+	if c.VariantD.Engine.TrailMode != "chandelier" {
+		t.Errorf("VariantD.Engine.TrailMode = %q, want chandelier", c.VariantD.Engine.TrailMode)
+	}
+	// default reentry su B (disabled)
+	if c.VariantB.ReEntry.Enabled {
+		t.Errorf("VariantB.ReEntry.Enabled default deve essere false")
+	}
+}
+
+func TestReEntryDefaultsNormalization(t *testing.T) {
+	yml := `variant_a:
+  name: "A"
+  reentry:
+    enabled: true
+`
+	path := filepath.Join(t.TempDir(), "cfg.yaml")
+	if err := os.WriteFile(path, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if c.VariantA.ReEntry.Lookback != 10 || c.VariantA.ReEntry.WithinBars != 20 {
+		t.Errorf("ReEntry defaults = %+v, want lookback 10 within 20", c.VariantA.ReEntry)
 	}
 }

@@ -128,74 +128,99 @@ type Backtest struct {
 	UseNextOpenFill    bool    `yaml:"use_next_open_fill"`
 	CommissionModel    string  `yaml:"commission_model"`
 }
+
+// EngineCfg — override engine per-variante (yaml inline sotto variant_a/b/c/d).
+// Campi zero → fallback alla sezione globale backtest:/trend: in EngineConfigFrom.
+type EngineCfg struct {
+	TrailMode       string  `yaml:"trail_mode"`           // donchian|chandelier (default donchian)
+	TrailATRMult    float64 `yaml:"trail_atr_mult"`       // moltiplicatore chandelier
+	DonExit         int     `yaml:"don_exit"`             // lunghezza Donchian exit (default trend.donchian_exit)
+	EntryMode       string  `yaml:"entry_mode"`           // close|intrabar (default close)
+	PyramidingUnits int     `yaml:"pyramiding_max_units"` // override unità pyramiding
+	PyramidStepATR  float64 `yaml:"pyramid_step_atr"`
+}
+
+// ReEntryCfg — re-entry dopo stop-out se il trend regge e prezzo fa nuovo high/low N barre
+type ReEntryCfg struct {
+	Enabled    bool `yaml:"enabled"`
+	Lookback   int  `yaml:"lookback"`    // nuovo high/low su N barre (default 10)
+	WithinBars int  `yaml:"within_bars"` // finestra barre dallo stop-out (default 20)
+}
+
 type VariantA struct {
-	Name          string  `yaml:"name"`
-	DonchianEntry int     `yaml:"donchian_entry"`
-	DonchianExit  int     `yaml:"donchian_exit"`
-	DonchianAlt   int     `yaml:"donchian_alt"`
-	ATRPeriod     int     `yaml:"atr_period"`
-	ATRStopMult   float64 `yaml:"atr_stop_mult"`
-	RiskPct       float64 `yaml:"risk_pct"`
-	SMAFilter     int     `yaml:"sma_filter"`
-	UseEMAFilter  bool    `yaml:"use_ema_filter"`
+	Name          string     `yaml:"name"`
+	DonchianEntry int        `yaml:"donchian_entry"`
+	DonchianExit  int        `yaml:"donchian_exit"`
+	DonchianAlt   int        `yaml:"donchian_alt"`
+	ATRPeriod     int        `yaml:"atr_period"`
+	ATRStopMult   float64    `yaml:"atr_stop_mult"`
+	RiskPct       float64    `yaml:"risk_pct"`
+	SMAFilter     int        `yaml:"sma_filter"`
+	UseEMAFilter  bool       `yaml:"use_ema_filter"`
+	Engine        EngineCfg  `yaml:",inline"`
+	ReEntry       ReEntryCfg `yaml:"reentry"`
 }
 type VariantB struct {
-	Name          string  `yaml:"name"`
-	DonchianEntry int     `yaml:"donchian_entry"`
-	DonchianExit  int     `yaml:"donchian_exit"`
-	DonchianAlt   int     `yaml:"donchian_alt"`
-	ATRPeriod     int     `yaml:"atr_period"`
-	ATRStopMult   float64 `yaml:"atr_stop_mult"`
-	RiskPct       float64 `yaml:"risk_pct"`
-	ADXPeriod     int     `yaml:"adx_period"`
-	ADXThreshold  float64 `yaml:"adx_threshold"`
-	EMAFast       int     `yaml:"ema_fast"`
-	EMASlow       int     `yaml:"ema_slow"`
-	VolLookback   int     `yaml:"vol_regime_lookback"`
-	VolLowPct     float64 `yaml:"vol_regime_low_pct"`
-	VolHighPct    float64 `yaml:"vol_regime_high_pct"`
+	Name          string     `yaml:"name"`
+	DonchianEntry int        `yaml:"donchian_entry"`
+	DonchianExit  int        `yaml:"donchian_exit"`
+	DonchianAlt   int        `yaml:"donchian_alt"`
+	ATRPeriod     int        `yaml:"atr_period"`
+	ATRStopMult   float64    `yaml:"atr_stop_mult"`
+	RiskPct       float64    `yaml:"risk_pct"`
+	ADXPeriod     int        `yaml:"adx_period"`
+	ADXThreshold  float64    `yaml:"adx_threshold"`
+	EMAFast       int        `yaml:"ema_fast"`
+	EMASlow       int        `yaml:"ema_slow"`
+	VolLookback   int        `yaml:"vol_regime_lookback"`
+	VolLowPct     float64    `yaml:"vol_regime_low_pct"`
+	VolHighPct    float64    `yaml:"vol_regime_high_pct"`
+	Engine        EngineCfg  `yaml:",inline"`
+	ReEntry       ReEntryCfg `yaml:"reentry"`
 }
 type VariantC struct {
-	Name              string  `yaml:"name"`
-	DonchianEntry     int     `yaml:"donchian_entry"`
-	DonchianExit      int     `yaml:"donchian_exit"`
-	ATRPeriod         int     `yaml:"atr_period"`
-	ATRStopMult       float64 `yaml:"atr_stop_mult"`
-	RiskPct           float64 `yaml:"risk_pct"`
-	ADXPeriod         int     `yaml:"adx_period"`
-	ADXThreshold      float64 `yaml:"adx_threshold"`
-	EMAFast           int     `yaml:"ema_fast"`
-	EMASlow           int     `yaml:"ema_slow"`
-	FundingZThreshold float64 `yaml:"funding_z_threshold"`
-	FundingZLookback  int     `yaml:"funding_z_lookback"`
-	OIDeltaThreshold  float64 `yaml:"oi_delta_threshold"`
-	VolumeMult        float64 `yaml:"volume_mult"`
-	VolumeSMA         int     `yaml:"volume_sma"`
+	Name              string     `yaml:"name"`
+	DonchianEntry     int        `yaml:"donchian_entry"`
+	DonchianExit      int        `yaml:"donchian_exit"`
+	ATRPeriod         int        `yaml:"atr_period"`
+	ATRStopMult       float64    `yaml:"atr_stop_mult"`
+	RiskPct           float64    `yaml:"risk_pct"`
+	ADXPeriod         int        `yaml:"adx_period"`
+	ADXThreshold      float64    `yaml:"adx_threshold"`
+	EMAFast           int        `yaml:"ema_fast"`
+	EMASlow           int        `yaml:"ema_slow"`
+	FundingZThreshold float64    `yaml:"funding_z_threshold"`
+	FundingZLookback  int        `yaml:"funding_z_lookback"`
+	OIDeltaThreshold  float64    `yaml:"oi_delta_threshold"`
+	VolumeMult        float64    `yaml:"volume_mult"`
+	VolumeSMA         int        `yaml:"volume_sma"`
+	Engine            EngineCfg  `yaml:",inline"`
+	ReEntry           ReEntryCfg `yaml:"reentry"`
 }
 type VariantD struct {
-	Name              string  `yaml:"name"`
-	DonchianFast      int     `yaml:"donchian_fast"`
-	DonchianMid       int     `yaml:"donchian_mid"`
-	DonchianSlow      int     `yaml:"donchian_slow"`
-	ATRPeriod         int     `yaml:"atr_period"`
-	ATRStopMult       float64 `yaml:"atr_stop_mult"`
-	RiskPct           float64 `yaml:"risk_pct"`
-	VolTargetPct      float64 `yaml:"vol_target_pct"`
-	KellyCapPct       float64 `yaml:"kelly_cap_pct"`
-	ADXPeriod         int     `yaml:"adx_period"`
-	ADXThreshold      float64 `yaml:"adx_threshold"`
-	EMAFast           int     `yaml:"ema_fast"`
-	EMASlow           int     `yaml:"ema_slow"`
-	VolLookback       int     `yaml:"vol_regime_lookback"`
-	FundingZThreshold float64 `yaml:"funding_z_threshold"`
-	FundingZLookback  int     `yaml:"funding_z_lookback"`
-	OIDeltaThreshold  float64 `yaml:"oi_delta_threshold"`
-	VolumeMult        float64 `yaml:"volume_mult"`
-	VolumeSMA         int     `yaml:"volume_sma"`
-	TrailATRMult      float64 `yaml:"trail_atr_mult"`
-	TrailMode         string  `yaml:"trail_mode"`
-	UseCrashBrake     bool    `yaml:"use_crash_brake"`
-	AdaptiveChannel   bool    `yaml:"adaptive_channel"`
+	Name              string     `yaml:"name"`
+	DonchianFast      int        `yaml:"donchian_fast"`
+	DonchianMid       int        `yaml:"donchian_mid"`
+	DonchianSlow      int        `yaml:"donchian_slow"`
+	ATRPeriod         int        `yaml:"atr_period"`
+	ATRStopMult       float64    `yaml:"atr_stop_mult"`
+	RiskPct           float64    `yaml:"risk_pct"`
+	VolTargetPct      float64    `yaml:"vol_target_pct"`
+	KellyCapPct       float64    `yaml:"kelly_cap_pct"`
+	ADXPeriod         int        `yaml:"adx_period"`
+	ADXThreshold      float64    `yaml:"adx_threshold"`
+	EMAFast           int        `yaml:"ema_fast"`
+	EMASlow           int        `yaml:"ema_slow"`
+	VolLookback       int        `yaml:"vol_regime_lookback"`
+	FundingZThreshold float64    `yaml:"funding_z_threshold"`
+	FundingZLookback  int        `yaml:"funding_z_lookback"`
+	OIDeltaThreshold  float64    `yaml:"oi_delta_threshold"`
+	VolumeMult        float64    `yaml:"volume_mult"`
+	VolumeSMA         int        `yaml:"volume_sma"`
+	UseCrashBrake     bool       `yaml:"use_crash_brake"`
+	AdaptiveChannel   bool       `yaml:"adaptive_channel"`
+	Engine            EngineCfg  `yaml:",inline"`
+	ReEntry           ReEntryCfg `yaml:"reentry"`
 }
 type Compare struct {
 	Variants []string `yaml:"variants"`
@@ -251,6 +276,17 @@ func Load(path string) (*Config, error) {
 	}
 	if c.General.InitialCapital == 0 {
 		c.General.InitialCapital = 10000
+	}
+	// normalizza default ReEntry (solo se enabled)
+	for _, r := range []*ReEntryCfg{&c.VariantA.ReEntry, &c.VariantB.ReEntry, &c.VariantC.ReEntry, &c.VariantD.ReEntry} {
+		if r.Enabled {
+			if r.Lookback <= 0 {
+				r.Lookback = 10
+			}
+			if r.WithinBars <= 0 {
+				r.WithinBars = 20
+			}
+		}
 	}
 	return &c, nil
 }
