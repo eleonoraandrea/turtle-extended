@@ -394,6 +394,12 @@ func LimitsFromConfig(cfg *config.Config, variant string) RiskLimits {
 	} else {
 		lim.SatelliteAlloc = 0
 	}
+	// separate pyramid legs already ride the wide exit: satellite would duplicate
+	// them (and its residue breaks the separate unit recount) → force off.
+	if cfg.Pyramiding.Mode == "separate" {
+		lim.SatelliteEnabled = false
+		lim.SatelliteAlloc = 0
+	}
 	// variant risk pct is the per-variant MAX and influences Base/Max risk window
 	switch variant {
 	case "A":

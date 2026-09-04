@@ -42,6 +42,7 @@ type Trade struct {
 	RMultiple   float64 `json:"r_multiple"` // PnLNet / riskAmount
 	SizingLog   string  `json:"sizing_log,omitempty"`
 	IsSatellite bool    `json:"is_satellite,omitempty"`
+	DonExitLen  int     `json:"don_exit_len"` // exit channel length used: 20 core, 55 satellite/leg
 }
 
 // Position open — supports satellite 30% for large winners (positive skew)
@@ -66,7 +67,7 @@ type Position struct {
 	SizingLog    string
 	EntryFee     float64 // entry-side fee already charged to equity
 	IsSatellite  bool    // true = satellite 30% (wide trailing, captures +5R/+10R)
-	DonExitLen   int     // per-position Donchian exit length (core 20, satellite 55)
+	DonExitLen   int     // per-position Donchian exit length (core 20, satellite/leg 55 (leg = pyramid separate))
 }
 
 type EquityPoint struct {
@@ -140,6 +141,12 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 	if lim.MaxNotional == 0 && cfg != nil && cfg.Costs.MaxNotionalPerTrade > 0 {
 		lim.MaxNotional = cfg.Costs.MaxNotionalPerTrade
 	}
+	// separate ⟹ satellite forced OFF (difesa in profondità: eng può divergere
+	// da cfg.Pyramiding.Mode in test/costruzione diretta; risk.go copre cfg, qui copriamo eng).
+	if eng.PyramidingMode == "separate" {
+		lim.SatelliteEnabled = false
+		lim.SatelliteAlloc = 0
+	}
 	res.RiskLimitsUsed = lim
 	// ── scaling guardrails: tetto effettivo + warning (nessun cambio sizing) ──
 	res.ScalingCeilingPct, res.ScalingBinding = risk.ScalingCeiling(lim)
@@ -149,6 +156,9 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 	}
 	if eng.PyramidingMode == "separate" && lim.PyramidingRiskNeutral {
 		res.Warnings = append(res.Warnings, "pyramiding.mode=separate ignora risk_neutral (vale solo per merged)")
+	}
+	if eng.PyramidingMode == "separate" && cfg.Profit.Satellite.Enabled {
+		res.Warnings = append(res.Warnings, "pyramiding.mode=separate disabilita satellite (incompatibile: le gambe usano già exit wide)")
 	}
 
 	ctx := strat.Prepare(bars)
@@ -221,7 +231,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 			ReturnPct: pnlNet / (pos.EntryPrice * pos.Qty) * 100,
 			RiskPct:   pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional,
 			StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult,
-			SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite,
+			SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite, DonExitLen: pos.DonExitLen,
 		})
 	}
 
@@ -414,7 +424,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					ReturnPct: pnlNet / (pos.EntryPrice * pos.Qty) * 100,
 					RiskPct:   pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional,
 					StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult,
-					SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite,
+					SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite, DonExitLen: pos.DonExitLen,
 				})
 				if exitReason == "stop" {
 					lastStop = stopOutState{valid: true, side: pos.Side, exitBarIdx: i}
@@ -445,7 +455,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					if pos.RiskAmount > 0 {
 						rMult = pnlNet / pos.RiskAmount
 					}
-					trades = append(trades, Trade{Symbol: eng.Symbol, Side: pos.Side, EntryTime: pos.EntryTime, ExitTime: bar.Time, EntryPrice: pos.EntryPrice, ExitPrice: bar.Close, Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice, ExitReason: "crash_brake", EntryReason: pos.EntryReason, PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum, BarsHeld: i - pos.EntryBarIdx, MAE: pos.MAE, MFE: pos.MFE, RiskPct: pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional, StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult, SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite})
+					trades = append(trades, Trade{Symbol: eng.Symbol, Side: pos.Side, EntryTime: pos.EntryTime, ExitTime: bar.Time, EntryPrice: pos.EntryPrice, ExitPrice: bar.Close, Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice, ExitReason: "crash_brake", EntryReason: pos.EntryReason, PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum, BarsHeld: i - pos.EntryBarIdx, MAE: pos.MAE, MFE: pos.MFE, RiskPct: pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional, StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult, SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite, DonExitLen: pos.DonExitLen})
 				}
 				positions = nil
 				brakeUntil = i + 6
@@ -666,6 +676,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							totalSlippage += slipCost
 							if eng.PyramidingMode == "separate" {
 								// gamba indipendente: stop proprio + exit wide Don55
+								// nota: sotto TrailMode chandelier la gamba usa il mult base (il +1.0 è per IsSatellite); wide solo con donchian trailing
 								leg := &Position{
 									Symbol: eng.Symbol, Side: sig.Side, Qty: dec.Qty,
 									EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
@@ -860,7 +871,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 		if pos.RiskAmount > 0 {
 			rMult = pnlNet / pos.RiskAmount
 		}
-		trades = append(trades, Trade{Symbol: eng.Symbol, Side: pos.Side, EntryTime: pos.EntryTime, ExitTime: bars[n-1].Time, EntryPrice: pos.EntryPrice, ExitPrice: exitPrice, Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice, ExitReason: "eod", EntryReason: pos.EntryReason, PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum, BarsHeld: n - 1 - pos.EntryBarIdx, RiskPct: pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional, StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult, SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite})
+		trades = append(trades, Trade{Symbol: eng.Symbol, Side: pos.Side, EntryTime: pos.EntryTime, ExitTime: bars[n-1].Time, EntryPrice: pos.EntryPrice, ExitPrice: exitPrice, Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice, ExitReason: "eod", EntryReason: pos.EntryReason, PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum, BarsHeld: n - 1 - pos.EntryBarIdx, RiskPct: pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional, StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult, SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite, DonExitLen: pos.DonExitLen})
 	}
 
 	final := equity

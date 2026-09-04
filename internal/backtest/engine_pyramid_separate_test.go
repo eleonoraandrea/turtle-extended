@@ -1,6 +1,7 @@
 package backtest
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -170,5 +171,48 @@ func TestSeparatePyramidRespectsMaxUnits(t *testing.T) {
 	res := Run(bars, strat, cfg, sepEng())
 	if len(res.Trades) != 4 {
 		t.Fatalf("attesi 4 trades (1 core + 3 add, max 4 unità), avuti %d", len(res.Trades))
+	}
+}
+
+func TestSeparateForcesSatelliteOff(t *testing.T) {
+	cfg := sepCfg(t)
+	cfg.Profit.Satellite.Enabled = true
+	cfg.Profit.Satellite.Allocation = 0.3
+	bars := flatBars(40, 100, 0.5)
+	for i := 24; i < 40; i++ {
+		bars[i] = data.Bar{Time: time.Unix(int64(i)*14400, 0), Open: 102, High: 103.5, Low: 101.5, Close: 103, Volume: 100}
+	}
+	signals := map[int]strategy.Signal{
+		25: {Side: 1, Strength: 1, StopPrice: 98, Reason: "script core"},
+		28: {Side: 1, Strength: 1, StopPrice: 97, Reason: "script add"},
+	}
+	strat := &sepStrat{scriptStrategy{cfg: cfg, signals: signals}}
+	res := Run(bars, strat, cfg, sepEng())
+	for _, tr := range res.Trades {
+		if tr.IsSatellite {
+			t.Fatalf("separate deve forzare satellite OFF, trovato trade satellite: %+v", tr)
+		}
+	}
+	found := false
+	for _, w := range res.Warnings {
+		if strings.Contains(w, "satellite") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Warnings %+v: atteso warning satellite disabilitato", res.Warnings)
+	}
+	// leg taggata con canale wide
+	legFound := false
+	for _, tr := range res.Trades {
+		if tr.EntryReason == "script add | pyramid separate" {
+			legFound = true
+			if tr.DonExitLen != 55 {
+				t.Errorf("leg DonExitLen = %d, want 55", tr.DonExitLen)
+			}
+		}
+	}
+	if !legFound {
+		t.Errorf("gamba separate non trovata nei trade")
 	}
 }
