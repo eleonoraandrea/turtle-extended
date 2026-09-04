@@ -85,9 +85,10 @@ type ATRCfg struct {
 	InitialStop float64 `yaml:"initial_stop"`
 }
 type PyramidingCfg struct {
-	Enabled      bool `yaml:"enabled"`
-	MaxAdditions int  `yaml:"max_additions"`
-	RiskNeutral  bool `yaml:"risk_neutral"`
+	Mode         string `yaml:"mode"` // merged|separate ("" = merged, comportamento attuale)
+	Enabled      bool   `yaml:"enabled"`
+	MaxAdditions int    `yaml:"max_additions"`
+	RiskNeutral  bool   `yaml:"risk_neutral"`
 }
 type SatelliteCfg struct {
 	Enabled    bool    `yaml:"enabled"`

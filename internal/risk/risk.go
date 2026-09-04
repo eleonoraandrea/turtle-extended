@@ -49,15 +49,16 @@ type RiskLimits struct {
 
 // SizingDecision full audit trail.
 type SizingDecision struct {
-	Accept      bool
-	Qty         float64
-	Notional    float64
-	RiskAmount  float64
-	RiskPct     float64 // EFFECTIVE risk after all caps
-	StopDist    float64
-	Leverage    float64 // notional / equity — DERIVED, never fixed
-	LeverageCap float64 // dynamic cap applied
-	Factors     []string
+	Accept           bool
+	Qty              float64
+	Notional         float64
+	RiskAmount       float64
+	RiskPct          float64 // EFFECTIVE risk after all caps
+	StopDist         float64
+	Leverage         float64 // notional / equity — DERIVED, never fixed
+	LeverageCap      float64 // dynamic cap applied
+	CappedByNotional bool    // true se qty ridotta dal cap nozionali
+	Factors          []string
 }
 
 func DefaultLimits() RiskLimits {
@@ -266,6 +267,7 @@ func Size(ms MarketState, lim RiskLimits) SizingDecision {
 	if notional > capNotional {
 		notional = capNotional
 		qty = notional / ms.Price
+		dec.CappedByNotional = true
 		dec.Factors = append(dec.Factors, fmt.Sprintf("notional capped by dyn lev %.2fx → $%.0f", levCap, notional))
 	}
 
@@ -286,6 +288,28 @@ func Size(ms MarketState, lim RiskLimits) SizingDecision {
 		dec.Factors = append(dec.Factors, fmt.Sprintf("final: qty %.5f, $%.0f notional, %.2fx lev, risk %.2f%%", qty, notional, dec.Leverage, riskPct))
 	}
 	return dec
+}
+
+// ScalingCeiling — tetto statico al rischio per-trade per una fresh entry
+// (heat/correlati a zero): minimo tra maxRisk e i cap attivi. Ritorna il tetto
+// e il nome del vincolo legante ("maxRisk", "kelly_cap", "correlated", "heat").
+// Cap a 0 = disabilitato e ignorato.
+func ScalingCeiling(lim RiskLimits) (float64, string) {
+	ceil := lim.MaxRiskPct
+	binding := "maxRisk"
+	if lim.KellyCapPct > 0 && lim.KellyCapPct < ceil {
+		ceil = lim.KellyCapPct
+		binding = "kelly_cap"
+	}
+	if lim.MaxCorrelatedPct > 0 && lim.MaxCorrelatedPct < ceil {
+		ceil = lim.MaxCorrelatedPct
+		binding = "correlated"
+	}
+	if lim.MaxHeatPct > 0 && lim.MaxHeatPct < ceil {
+		ceil = lim.MaxHeatPct
+		binding = "heat"
+	}
+	return ceil, binding
 }
 
 // LimitsFromConfig builds limits merging global risk cfg + variant risk pct.

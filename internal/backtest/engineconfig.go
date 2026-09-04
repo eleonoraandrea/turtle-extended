@@ -59,6 +59,10 @@ func EngineConfigFrom(cfg *config.Config, variant, symbol string) EngineConfig {
 	if step <= 0 {
 		step = cfg.Backtest.PyramidStepATR
 	}
+	pyrMode := cfg.Pyramiding.Mode
+	if pyrMode == "" {
+		pyrMode = "merged"
+	}
 	return EngineConfig{
 		Variant:        variant,
 		Symbol:         symbol,
@@ -68,6 +72,7 @@ func EngineConfigFrom(cfg *config.Config, variant, symbol string) EngineConfig {
 		Leverage:       cfg.Costs.Leverage,
 		UseNextOpen:    cfg.Backtest.UseNextOpenFill,
 		PyramidingMax:  pyrMax,
+		PyramidingMode: pyrMode,
 		PyramidStepATR: step,
 		TrailATRMult:   trailMult,
 		TrailMode:      trailMode,

@@ -103,6 +103,10 @@ func Generate(path string, in Input) error {
 		"HeatLimit":      lim.MaxHeatPct,
 		"DDStart":        lim.DDDeleverageStart,
 		"DDFlat":         lim.DDFlatPct,
+		"ScaleCeil":      in.Result.ScalingCeilingPct,
+		"ScaleBinding":   in.Result.ScalingBinding,
+		"NotionalHits":   in.Result.NotionalCapHits,
+		"Warnings":       in.Result.Warnings,
 	}
 	tmpl := template.Must(template.New("report").Funcs(template.FuncMap{
 		"fmtFloat": func(v float64) string {
@@ -527,8 +531,9 @@ code{background:#0f172a;padding:2px 6px;border-radius:6px;font-size:12px;border:
       <div style="background:#0f172a;padding:10px;border-radius:8px;border:1px solid #1f2937"><div class="small">Rischio medio/trade</div><div style="font-size:18px;font-weight:800">{{fmtPct .AvgRisk}}</div></div>
       <div style="background:#0f172a;padding:10px;border-radius:8px;border:1px solid #1f2937"><div class="small">Rischio max/trade</div><div style="font-size:18px;font-weight:800;color:var(--yellow)">{{fmtPct .MaxRiskUsed}}</div></div>
       <div style="background:#0f172a;padding:10px;border-radius:8px;border:1px solid #1f2937"><div class="small">Heat max (portafoglio)</div><div style="font-size:18px;font-weight:800">{{fmtPct .MaxHeat}}</div></div>
+      <div style="background:#0f172a;padding:10px;border-radius:8px;border:1px solid #1f2937"><div class="small">Tetto scaling (risk effettivo)</div><div style="font-size:18px;font-weight:800">{{fmtPct .ScaleCeil}} <span class="small">({{ .ScaleBinding }} lega)</span></div></div>
     </div>
-    <div class="small" style="margin-top:8px">Sizing: <code>qty = (equity × risk%) / |entry − stop|</code> — leva <b>derivata</b> (notional/equity), mai fissa. Cap dinamico: vol regime ×0.50/0.75/1.20, ADX&lt;18 ×0.60, |funding z|&gt;2 ×0.70, drawdown de-leverage da {{fmtFloat .DDStart}}% a flat {{fmtFloat .DDFlat}}%. Heat budget {{fmtPct .HeatLimit}}.</div>
+    <div class="small" style="margin-top:8px">Sizing: <code>qty = (equity × risk%) / |entry − stop|</code> — leva <b>derivata</b> (notional/equity), mai fissa. Cap dinamico: vol regime ×0.50/0.75/1.20, ADX&lt;18 ×0.60, |funding z|&gt;2 ×0.70, drawdown de-leverage da {{fmtFloat .DDStart}}% a flat {{fmtFloat .DDFlat}}%. Heat budget {{fmtPct .HeatLimit}}. Notional cap hits: {{ .NotionalHits }}.{{range .Warnings}} <b style="color:#fbbf24">Avviso: {{ . }}</b>{{end}}</div>
   </div>
 
   <div class="card" style="margin-top:14px">

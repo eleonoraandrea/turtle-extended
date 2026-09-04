@@ -1,6 +1,7 @@
 package backtest
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -93,12 +94,16 @@ type Result struct {
 	TotalSlippage  float64       `json:"total_slippage"`
 	MaxUnits       int           `json:"max_units"`
 	// risk audit aggregates
-	AvgLeverage     float64         `json:"avg_leverage"`
-	MaxLeverageUsed float64         `json:"max_leverage_used"`
-	AvgRiskPct      float64         `json:"avg_risk_pct"`
-	MaxRiskPctUsed  float64         `json:"max_risk_pct_used"`
-	MaxHeatSeen     float64         `json:"max_heat_seen"`
-	RiskLimitsUsed  risk.RiskLimits `json:"risk_limits_used"`
+	AvgLeverage       float64         `json:"avg_leverage"`
+	MaxLeverageUsed   float64         `json:"max_leverage_used"`
+	AvgRiskPct        float64         `json:"avg_risk_pct"`
+	MaxRiskPctUsed    float64         `json:"max_risk_pct_used"`
+	MaxHeatSeen       float64         `json:"max_heat_seen"`
+	RiskLimitsUsed    risk.RiskLimits `json:"risk_limits_used"`
+	Warnings          []string        `json:"warnings,omitempty"`
+	ScalingCeilingPct float64         `json:"scaling_ceiling_pct"`
+	ScalingBinding    string          `json:"scaling_binding"`
+	NotionalCapHits   int             `json:"notional_cap_hits"`
 }
 
 type EngineConfig struct {
@@ -110,6 +115,7 @@ type EngineConfig struct {
 	Leverage       float64 // legacy fallback hard cap if risk.max_leverage==0
 	UseNextOpen    bool
 	PyramidingMax  int
+	PyramidingMode string // merged|separate (default merged)
 	PyramidStepATR float64
 	TrailATRMult   float64
 	TrailMode      string
@@ -135,6 +141,15 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 		lim.MaxNotional = cfg.Costs.MaxNotionalPerTrade
 	}
 	res.RiskLimitsUsed = lim
+	// ── scaling guardrails: tetto effettivo + warning (nessun cambio sizing) ──
+	res.ScalingCeilingPct, res.ScalingBinding = risk.ScalingCeiling(lim)
+	if res.ScalingCeilingPct < lim.MaxRiskPct {
+		res.Warnings = append(res.Warnings, fmt.Sprintf("scaling: risk richiesto %.2f%% → tetto effettivo %.2f%% (%s lega)",
+			lim.MaxRiskPct, res.ScalingCeilingPct, res.ScalingBinding))
+	}
+	if eng.PyramidingMode == "separate" && lim.PyramidingRiskNeutral {
+		res.Warnings = append(res.Warnings, "pyramiding.mode=separate ignora risk_neutral (vale solo per merged)")
+	}
 
 	ctx := strat.Prepare(bars)
 	n := len(bars)
@@ -607,6 +622,9 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					// ── pyramiding ──
 					if risk.CanPyramid(earliest.EntryPrice, bar.Close, atr, sig.Side, sameSideUnits, eng.PyramidingMax, eng.PyramidStepATR) {
 						dec := risk.Size(ms, lim)
+						if dec.CappedByNotional {
+							res.NotionalCapHits++
+						}
 						// risk_neutral: pyramid does not increase total risk (stop of existing moved to breakeven)
 						if lim.PyramidingRiskNeutral {
 							// keep total risk near base: pyramid risk is small, not added to heat
@@ -671,6 +689,9 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 				} else if len(positions) == 0 {
 					// ── fresh entry: full risk-based sizing + satellite 30% for positive skew ──
 					dec := risk.Size(ms, lim)
+					if dec.CappedByNotional {
+						res.NotionalCapHits++
+					}
 					if dec.Accept && dec.Qty > 0 {
 						fee := fillPrice * dec.Qty * eng.FeeBps / 10000.0
 						slipCost := slipAmt * dec.Qty

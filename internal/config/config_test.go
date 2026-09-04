@@ -201,3 +201,30 @@ func TestReEntryDefaultsNormalization(t *testing.T) {
 		t.Errorf("ReEntry defaults = %+v, want lookback 10 within 20", c.VariantA.ReEntry)
 	}
 }
+
+func TestPyramidingModeDefault(t *testing.T) {
+	yml := "pyramiding:\n  enabled: true\n  max_additions: 4\n  risk_neutral: true\n"
+	path := filepath.Join(t.TempDir(), "cfg.yaml")
+	if err := os.WriteFile(path, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Pyramiding.Mode != "" {
+		t.Errorf("Mode default deve essere \"\" (merged), avuto %q", c.Pyramiding.Mode)
+	}
+	yml2 := "pyramiding:\n  mode: separate\n  enabled: true\n  max_additions: 6\n"
+	path2 := filepath.Join(t.TempDir(), "cfg2.yaml")
+	if err := os.WriteFile(path2, []byte(yml2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c2, err := Load(path2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c2.Pyramiding.Mode != "separate" {
+		t.Errorf("Mode = %q, want separate", c2.Pyramiding.Mode)
+	}
+}

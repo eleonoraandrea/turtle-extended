@@ -215,6 +215,13 @@ func cmdBacktest() *cobra.Command {
 			stats := metrics.Compute(res)
 			fmt.Printf("%s %s: Return %.2f%% CAGR %.2f%% Sharpe %.2f Sortino %.2f MaxDD %.2f%% PF %.2f Trades %d Fee $%.2f Funding $%.2f\n",
 				symbol, variant, stats.ReturnPct, stats.ReturnAnnual, stats.Sharpe, stats.Sortino, stats.MaxDD, stats.ProfitFactor, stats.Trades, stats.TotalFee, stats.TotalFunding)
+			fmt.Printf("scaling ceiling: %.2f%% (%s lega)\n", res.ScalingCeilingPct, res.ScalingBinding)
+			for _, w := range res.Warnings {
+				fmt.Printf("warn: %s\n", w)
+			}
+			if res.NotionalCapHits > 0 {
+				fmt.Printf("notional cap: %d entry ridotte dal cap nozionali\n", res.NotionalCapHits)
+			}
 			if outHTML == "" {
 				outHTML = fmt.Sprintf("reports/%s_%s_%s.html", symbol, variant, time.Now().Format("20060102_1504"))
 			}

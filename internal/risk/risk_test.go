@@ -198,3 +198,42 @@ func TestIsCrashBar(t *testing.T) {
 		t.Fatalf("abs")
 	}
 }
+
+func TestScalingCeiling(t *testing.T) {
+	l1 := DefaultLimits()
+	l1.MaxRiskPct = 4.0
+	l1.KellyCapPct = 2.0
+	l1.MaxCorrelatedPct = 4.0
+	l1.MaxHeatPct = 6.0
+	c, b := ScalingCeiling(l1)
+	if c != 2.0 || b != "kelly_cap" {
+		t.Errorf("caso kelly: ceiling %.2f (%s), want 2.0 (kelly_cap)", c, b)
+	}
+	l2 := DefaultLimits()
+	l2.MaxRiskPct = 4.0
+	l2.KellyCapPct = 4.0
+	l2.MaxCorrelatedPct = 3.0
+	l2.MaxHeatPct = 6.0
+	c, b = ScalingCeiling(l2)
+	if c != 3.0 || b != "correlated" {
+		t.Errorf("caso correlated: ceiling %.2f (%s), want 3.0 (correlated)", c, b)
+	}
+	l3 := DefaultLimits()
+	l3.MaxRiskPct = 4.0
+	l3.KellyCapPct = 4.0
+	l3.MaxCorrelatedPct = 4.0
+	l3.MaxHeatPct = 6.0
+	c, b = ScalingCeiling(l3)
+	if c != 4.0 || b != "maxRisk" {
+		t.Errorf("caso libero: ceiling %.2f (%s), want 4.0 (maxRisk)", c, b)
+	}
+	l4 := DefaultLimits()
+	l4.MaxRiskPct = 4.0
+	l4.KellyCapPct = 0
+	l4.MaxCorrelatedPct = 0
+	l4.MaxHeatPct = 0
+	c, b = ScalingCeiling(l4)
+	if c != 4.0 || b != "maxRisk" {
+		t.Errorf("caso no-cap: ceiling %.2f (%s), want 4.0 (maxRisk)", c, b)
+	}
+}
