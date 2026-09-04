@@ -59,6 +59,30 @@ type Strategy interface {
 	Next(ctx *Context, i int) Signal
 }
 
+// IntrabarEntryLevels — livelli entry per modalità intrabar (stop-entry a canale).
+// I livelli DEVONO essere calcolati solo da barre < i (no lookahead).
+type IntrabarEntryLevels struct {
+	Enabled      bool
+	LongLevel    float64 // NaN = disabilitato/filtrato
+	LongStopATR  float64
+	ShortLevel   float64 // NaN = disabilitato/filtrato
+	ShortStopATR float64
+}
+
+type IntrabarLevels interface {
+	IntrabarEntry(ctx *Context, i int) IntrabarEntryLevels
+}
+
+// StopOutInfo — ultimo stop-out, per logica re-entry
+type StopOutInfo struct {
+	Side       int
+	ExitBarIdx int
+}
+
+type ReEntryChecker interface {
+	ReEntry(ctx *Context, i int, last StopOutInfo) Signal
+}
+
 // Helpers to convert bars to slices
 func PrepareCommon(bars data.Bars, cfg *config.Config, variant string) *Context {
 	n := len(bars)

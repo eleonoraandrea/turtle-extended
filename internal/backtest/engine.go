@@ -23,6 +23,7 @@ type Trade struct {
 	EntryATR    float64   `json:"entry_atr"`
 	StopPrice   float64   `json:"stop_price"`
 	ExitReason  string    `json:"exit_reason"`
+	EntryReason string    `json:"entry_reason"`
 	PnL         float64   `json:"pnl"`     // gross PnL in quote (USDC)
 	PnLNet      float64   `json:"pnl_net"` // net after fees+funding
 	Fee         float64   `json:"fee"`
@@ -51,6 +52,7 @@ type Position struct {
 	EntryTime    time.Time
 	EntryATR     float64
 	StopPrice    float64
+	EntryReason  string
 	Units        int
 	EntryBarIdx  int
 	MAE          float64
@@ -167,7 +169,47 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 
 	brakeUntil := -1
 
+	// ultimo stop-out per logica re-entry (interfaccia ReEntryChecker, Task 4)
+	type stopOutState struct {
+		valid      bool
+		side       int
+		exitBarIdx int
+	}
+	var lastStop stopOutState
+
 	// helpers -----------------------------------------------------------------
+	// recordExit — registra chiusura posizione (usato dal path intrabar same-bar stop)
+	recordExit := func(pos *Position, exitPrice float64, reason string, barIdx int) {
+		var pnl float64
+		if pos.Side == 1 {
+			pnl = (exitPrice - pos.EntryPrice) * pos.Qty
+		} else {
+			pnl = (pos.EntryPrice - exitPrice) * pos.Qty
+		}
+		exitFee := exitPrice * pos.Qty * eng.FeeBps / 10000.0
+		fee := pos.EntryFee + exitFee
+		pnlNet := pnl - fee - pos.FundingAccum
+		equity += pnl - exitFee
+		totalFee += exitFee
+		rMult := 0.0
+		if pos.RiskAmount > 0 {
+			rMult = pnlNet / pos.RiskAmount
+		}
+		trades = append(trades, Trade{
+			Symbol: eng.Symbol, Side: pos.Side,
+			EntryTime: pos.EntryTime, ExitTime: bars[barIdx].Time,
+			EntryPrice: pos.EntryPrice, ExitPrice: exitPrice,
+			Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice,
+			EntryReason: pos.EntryReason, ExitReason: reason,
+			PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum,
+			BarsHeld: barIdx - pos.EntryBarIdx, MAE: pos.MAE, MFE: pos.MFE,
+			ReturnPct: pnlNet / (pos.EntryPrice * pos.Qty) * 100,
+			RiskPct:   pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional,
+			StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult,
+			SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite,
+		})
+	}
+
 	openHeat := func() float64 {
 		sum := 0.0
 		for _, p := range positions {
@@ -349,13 +391,16 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					EntryTime: pos.EntryTime, ExitTime: bar.Time,
 					EntryPrice: pos.EntryPrice, ExitPrice: exitPrice,
 					Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice,
-					ExitReason: exitReason, PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum,
+					ExitReason: exitReason, EntryReason: pos.EntryReason, PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum,
 					BarsHeld: i - pos.EntryBarIdx, MAE: pos.MAE, MFE: pos.MFE,
 					ReturnPct: pnlNet / (pos.EntryPrice * pos.Qty) * 100,
 					RiskPct:   pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional,
 					StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult,
 					SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite,
 				})
+				if exitReason == "stop" {
+					lastStop = stopOutState{valid: true, side: pos.Side, exitBarIdx: i}
+				}
 			} else {
 				remaining = append(remaining, pos)
 			}
@@ -382,7 +427,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					if pos.RiskAmount > 0 {
 						rMult = pnlNet / pos.RiskAmount
 					}
-					trades = append(trades, Trade{Symbol: eng.Symbol, Side: pos.Side, EntryTime: pos.EntryTime, ExitTime: bar.Time, EntryPrice: pos.EntryPrice, ExitPrice: bar.Close, Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice, ExitReason: "crash_brake", PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum, BarsHeld: i - pos.EntryBarIdx, MAE: pos.MAE, MFE: pos.MFE, RiskPct: pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional, StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult, SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite})
+					trades = append(trades, Trade{Symbol: eng.Symbol, Side: pos.Side, EntryTime: pos.EntryTime, ExitTime: bar.Time, EntryPrice: pos.EntryPrice, ExitPrice: bar.Close, Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice, ExitReason: "crash_brake", EntryReason: pos.EntryReason, PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum, BarsHeld: i - pos.EntryBarIdx, MAE: pos.MAE, MFE: pos.MFE, RiskPct: pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional, StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult, SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite})
 				}
 				positions = nil
 				brakeUntil = i + 6
@@ -413,20 +458,70 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 		}
 
 		// ── signal + RISK-BASED SIZING with DYNAMIC LEVERAGE ──
-		sig := strat.Next(ctx, i)
+		// ── signal: intrabar (livelli da barre < i) → Next (close-mode) → re-entry ──
+		var sig strategy.Signal
+		intrabarFill, intrabarSlip := 0.0, 0.0
+		isIntrabar := false
+		if eng.EntryMode == "intrabar" && len(positions) == 0 && i >= 1 && i+1 < n {
+			if lv, ok := strat.(strategy.IntrabarLevels); ok {
+				levels := lv.IntrabarEntry(ctx, i)
+				atrPrev := ctx.ATR[i-1]
+				if levels.Enabled && !math.IsNaN(atrPrev) && atrPrev > 0 {
+					longHit := !math.IsNaN(levels.LongLevel) && bar.High >= levels.LongLevel
+					shortHit := !math.IsNaN(levels.ShortLevel) && bar.Low <= levels.ShortLevel
+					side := 0
+					var level, stopATR float64
+					if longHit && !shortHit {
+						side, level, stopATR = 1, levels.LongLevel, levels.LongStopATR
+					} else if shortHit && !longHit {
+						side, level, stopATR = -1, levels.ShortLevel, levels.ShortStopATR
+					}
+					if side != 0 && stopATR > 0 {
+						fill := level
+						if (side == 1 && bar.Open > level) || (side == -1 && bar.Open < level) {
+							fill = bar.Open // gap oltre il livello: fill alla open
+						}
+						if eng.SlippageBps > 0 {
+							intrabarSlip = fill * eng.SlippageBps / 10000.0
+							if side == 1 {
+								fill += intrabarSlip
+							} else {
+								fill -= intrabarSlip
+							}
+						}
+						stop := fill - float64(side)*stopATR*atrPrev
+						sig = strategy.Signal{Side: side, Strength: 1, StopPrice: stop, Reason: "intrabar breakout"}
+						intrabarFill = fill
+						isIntrabar = true
+					}
+				}
+			}
+		}
+		if sig.Side == 0 {
+			sig = strat.Next(ctx, i)
+		}
+		if sig.Side == 0 && lastStop.valid {
+			if rc, ok := strat.(strategy.ReEntryChecker); ok {
+				sig = rc.ReEntry(ctx, i, strategy.StopOutInfo{Side: lastStop.side, ExitBarIdx: lastStop.exitBarIdx})
+			}
+		}
 		// with UseNextOpen a signal on the final bar can never fill: discard it
 		// instead of entering at close and instantly closing EOD with phantom fees.
-		if sig.Side != 0 && !(eng.UseNextOpen && i+1 >= n) {
+		// (intrabar fills happen on the current bar, so the limit does not apply)
+		if sig.Side != 0 && !(eng.UseNextOpen && !isIntrabar && i+1 >= n) {
 			atr := ctx.ATR[i]
 			if math.IsNaN(atr) {
 				atr = 0
 			}
 
-			// fill price preview (next open + slippage) — track slippage cost
+			// fill price: intrabar (già calcolato, slippage incluso) oppure next-open/close
 			fillPrice := bar.Close
 			fillTime := bar.Time
 			slipAmt := 0.0
-			if eng.UseNextOpen && i+1 < n {
+			if isIntrabar {
+				fillPrice = intrabarFill
+				slipAmt = intrabarSlip
+			} else if eng.UseNextOpen && i+1 < n {
 				fillPrice = bars[i+1].Open
 				fillTime = bars[i+1].Time
 				if eng.SlippageBps > 0 {
@@ -592,7 +687,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							corePos := &Position{
 								Symbol: eng.Symbol, Side: sig.Side, Qty: coreQty,
 								EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
-								StopPrice: stopPx, Units: 1, EntryBarIdx: i,
+								StopPrice: stopPx, EntryReason: sig.Reason, Units: 1, EntryBarIdx: i,
 								RiskPct: coreRisk, Leverage: coreLev,
 								Notional: coreNotional, RiskAmount: coreRisk / 100 * ms.Equity,
 								SizingLog:   logFactors(dec) + " | core 70%",
@@ -602,7 +697,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							satPos := &Position{
 								Symbol: eng.Symbol, Side: sig.Side, Qty: satQty,
 								EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
-								StopPrice: stopPx, Units: 1, EntryBarIdx: i,
+								StopPrice: stopPx, EntryReason: sig.Reason, Units: 1, EntryBarIdx: i,
 								RiskPct: satRisk, Leverage: satLev,
 								Notional: satNotional, RiskAmount: satRisk / 100 * ms.Equity,
 								SizingLog:   logFactors(dec) + " | satellite 30% (wide Don55)",
@@ -614,7 +709,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							pos := &Position{
 								Symbol: eng.Symbol, Side: sig.Side, Qty: dec.Qty,
 								EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
-								StopPrice: stopPx, Units: 1, EntryBarIdx: i,
+								StopPrice: stopPx, EntryReason: sig.Reason, Units: 1, EntryBarIdx: i,
 								RiskPct: dec.RiskPct, Leverage: dec.Leverage,
 								Notional: dec.Notional, RiskAmount: dec.RiskAmount,
 								SizingLog: logFactors(dec), EntryFee: fee,
@@ -623,6 +718,45 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							positions = append(positions, pos)
 						}
 					}
+				}
+
+				// intrabar same-bar stop — PESSIMISTICO: se dopo il fill anche lo stop
+				// è toccabile nella stessa barra, assumiamo fill→stop (path inconoscibile)
+				if isIntrabar {
+					var survived []*Position
+					for _, p := range positions {
+						if p.EntryBarIdx != i {
+							survived = append(survived, p)
+							continue
+						}
+						stopHit := (p.Side == 1 && bar.Low <= p.StopPrice) || (p.Side == -1 && bar.High >= p.StopPrice)
+						if !stopHit {
+							survived = append(survived, p)
+							continue
+						}
+						exitPrice := p.StopPrice
+						if eng.SlippageBps > 0 {
+							slip := exitPrice * eng.SlippageBps / 10000.0
+							if p.Side == 1 {
+								exitPrice -= slip
+							} else {
+								exitPrice += slip
+							}
+							totalSlippage += slip * p.Qty
+						}
+						// MAE della barra di entry
+						if p.Side == 1 {
+							if mae := (bar.Low - p.EntryPrice) / p.EntryPrice * 100; mae < p.MAE {
+								p.MAE = mae
+							}
+						} else {
+							if mae := (p.EntryPrice - bar.High) / p.EntryPrice * 100; mae < p.MAE {
+								p.MAE = mae
+							}
+						}
+						recordExit(p, exitPrice, "stop_same_bar", i)
+					}
+					positions = survived
 				}
 			}
 		}
@@ -672,7 +806,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 		if pos.RiskAmount > 0 {
 			rMult = pnlNet / pos.RiskAmount
 		}
-		trades = append(trades, Trade{Symbol: eng.Symbol, Side: pos.Side, EntryTime: pos.EntryTime, ExitTime: bars[n-1].Time, EntryPrice: pos.EntryPrice, ExitPrice: exitPrice, Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice, ExitReason: "eod", PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum, BarsHeld: n - 1 - pos.EntryBarIdx, RiskPct: pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional, StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult, SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite})
+		trades = append(trades, Trade{Symbol: eng.Symbol, Side: pos.Side, EntryTime: pos.EntryTime, ExitTime: bars[n-1].Time, EntryPrice: pos.EntryPrice, ExitPrice: exitPrice, Qty: pos.Qty, EntryATR: pos.EntryATR, StopPrice: pos.StopPrice, ExitReason: "eod", EntryReason: pos.EntryReason, PnL: pnl, PnLNet: pnlNet, Fee: fee, FundingCost: pos.FundingAccum, BarsHeld: n - 1 - pos.EntryBarIdx, RiskPct: pos.RiskPct, Leverage: pos.Leverage, Notional: pos.Notional, StopDist: math.Abs(pos.EntryPrice - pos.StopPrice), RMultiple: rMult, SizingLog: pos.SizingLog, IsSatellite: pos.IsSatellite})
 	}
 
 	final := equity
