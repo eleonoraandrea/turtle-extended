@@ -51,7 +51,7 @@ Safety: paper default, kill-switch /tmp/atps.halt, heat 3%/2%, leva hard 5×, cr
 Spec: docs/LIVE_EXECUTION_SPEC.md — TUI: 'd' toggle dry-run live.
 `,
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
 			if symbol == "" {
 				symbol = cfg.General.Symbols[0]
 			}
@@ -114,13 +114,13 @@ Spec: docs/LIVE_EXECUTION_SPEC.md — TUI: 'd' toggle dry-run live.
 						cfg.Orderly.Mainnet = "https://testnet-api.orderly.org"
 					}
 				}
-				// also check env/flags
+				// tutte e tre le credenziali Orderly sono obbligatorie per il live
 				acc := os.Getenv("ORDERLY_ACCOUNT_ID")
 				if acc == "" {
-					acc = os.Getenv("ORDERLY_SECRET") // fallback check
+					acc = os.Getenv("ORDERLY_ACCOUNT")
 				}
-				if os.Getenv("ORDERLY_SECRET") == "" && os.Getenv("ORDERLY_KEY") == "" {
-					fmt.Fprintln(os.Stderr, "⚠️  Env ORDERLY_* mancanti → fallback PAPER (dry-run=true)")
+				if acc == "" || os.Getenv("ORDERLY_KEY") == "" || os.Getenv("ORDERLY_SECRET") == "" {
+					fmt.Fprintln(os.Stderr, "⚠️  Env ORDERLY_* incomplete (ACCOUNT_ID/KEY/SECRET) → fallback PAPER (dry-run=true)")
 					dryRun = true
 					isLive = false
 				}
@@ -131,8 +131,11 @@ Spec: docs/LIVE_EXECUTION_SPEC.md — TUI: 'd' toggle dry-run live.
 					isLive = false
 				}
 			}
-			if dryRun {
-				isLive = false
+			// ENFORCEMENT FINALE del double opt-in: senza --live --i-understand-live
+			// (+ --dry-run=false + chiavi + no kill-switch) il bot resta PAPER.
+			// isLive calcolato ma non applicato era un bypass critico.
+			if !isLive {
+				dryRun = true
 			}
 			paper = dryRun // alias per compat con bot.New
 

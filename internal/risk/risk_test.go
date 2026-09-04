@@ -105,13 +105,14 @@ func TestAnnualizedVol(t *testing.T) {
 }
 
 func TestCanPyramid(t *testing.T) {
-	if CanPyramid(100, 101, 1, 1, 0, 4, 0.5) != true {
+	// threshold = step×ATR×units already open (first add at 0.5 ATR with units=1)
+	if CanPyramid(100, 101, 1, 1, 1, 4, 0.5) != true {
 		t.Fatalf("should pyramid 0.5 ATR up")
 	}
-	if CanPyramid(100, 100.3, 1, 1, 0, 4, 0.5) != false {
+	if CanPyramid(100, 100.3, 1, 1, 1, 4, 0.5) != false {
 		t.Fatalf("not enough move")
 	}
-	if CanPyramid(100, 99, 1, -1, 0, 4, 0.5) != true {
+	if CanPyramid(100, 99, 1, -1, 1, 4, 0.5) != true {
 		t.Fatalf("short pyramid")
 	}
 	if CanPyramid(100, 101, 1, 1, 4, 4, 0.5) != false {

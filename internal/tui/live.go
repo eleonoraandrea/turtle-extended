@@ -57,7 +57,9 @@ func NewLive(cfg *config.Config, b *bot.Bot, symbol, variant, interval string, p
 }
 
 func (m LiveModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.tickCmd(), m.botTickCmd(), tea.EnterAltScreen)
+	// Il polling del bot è di competenza ESCLUSIVA di b.Start (rispetta --poll):
+	// un secondo scheduler qui causava tick/ordini duplicati. 'r' resta manuale.
+	return tea.Batch(m.spinner.Tick, m.tickCmd(), tea.EnterAltScreen)
 }
 
 func (m LiveModel) tickCmd() tea.Cmd {
@@ -148,12 +150,8 @@ func (m LiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.status = fmt.Sprintf("Bot error: %v", msg.err)
 		}
-		// schedule next bot tick in 30s
-		return m, tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
-			return liveBotMsgWrapper{}
-		})
-	case liveBotMsgWrapper:
-		return m, m.botTickCmd()
+		// niente rescheduling: il loop di polling è di b.Start (--poll)
+		return m, nil
 	}
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)

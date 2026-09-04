@@ -3,6 +3,7 @@ package risk
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/atps/atps/internal/config"
 )
@@ -294,6 +295,9 @@ func LimitsFromConfig(cfg *config.Config, variant string) RiskLimits {
 	if cfg == nil {
 		return lim
 	}
+	// normalizza: "d" e "D" devono produrre gli stessi limit (il factory
+	// strategia accetta entrambi, prima solo il maiuscolo riceveva i limit D)
+	variant = strings.ToUpper(strings.TrimSpace(variant))
 	// ── new spec risk base/min/max (decimal 0.01) ──
 	if cfg.Risk.Base != 0 {
 		lim.BaseRiskPct = cfg.Risk.Base * 100
@@ -404,9 +408,16 @@ func LimitsFromConfig(cfg *config.Config, variant string) RiskLimits {
 	if lim.MinRiskPct > lim.MaxRiskPct {
 		lim.MinRiskPct = lim.MaxRiskPct * 0.125 // 0.25/2.0 ratio preserved
 	}
-	// global risk_per_trade overrides variant if smaller (defense in depth)
-	if cfg.Risk.MaxRiskPerTradePct > 0 && lim.RiskPerTradePct > cfg.Risk.MaxRiskPerTradePct {
-		lim.RiskPerTradePct = cfg.Risk.MaxRiskPerTradePct
+	// global risk_per_trade overrides variant if smaller (defense in depth).
+	// Il clamp va applicato ANCHE a MaxRiskPct: è il soffillo usato dal sizing
+	// (prima clampava solo l'alias legacy e il rischio effettivo restava sopra il cap).
+	if cfg.Risk.MaxRiskPerTradePct > 0 {
+		if lim.RiskPerTradePct > cfg.Risk.MaxRiskPerTradePct {
+			lim.RiskPerTradePct = cfg.Risk.MaxRiskPerTradePct
+		}
+		if lim.MaxRiskPct > cfg.Risk.MaxRiskPerTradePct {
+			lim.MaxRiskPct = cfg.Risk.MaxRiskPerTradePct
+		}
 	}
 	if cfg.Risk.Max > 0 && lim.MaxRiskPct > cfg.Risk.Max*100 {
 		lim.MaxRiskPct = cfg.Risk.Max * 100
@@ -423,11 +434,13 @@ func CanPyramid(entryPrice, currentPrice float64, atr float64, side int, units i
 	if atr <= 0 {
 		return false
 	}
+	// units already open → the next add triggers at step×ATR×units
+	// (first add with units=1 fires at 0.5 ATR, classic turtle spacing)
 	if side == 1 {
-		return currentPrice >= entryPrice+stepATR*atr*float64(units+1)
+		return currentPrice >= entryPrice+stepATR*atr*float64(units)
 	}
 	if side == -1 {
-		return currentPrice <= entryPrice-stepATR*atr*float64(units+1)
+		return currentPrice <= entryPrice-stepATR*atr*float64(units)
 	}
 	return false
 }

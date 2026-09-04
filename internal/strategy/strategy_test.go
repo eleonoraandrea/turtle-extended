@@ -78,7 +78,7 @@ func TestVariantBFilter(t *testing.T) {
 	ctx := PrepareCommon(bars, cfg, "B")
 	// set ADX low to trigger filter
 	i := s.Warmup() + 10
-	ctx.ADX[i] = 5 // below threshold 20
+	ctx.ADX[i] = 5                      // below threshold 20
 	ctx.Close[i] = ctx.Don20H[i-1] + 10 // breakout
 	ctx.Close[i-1] = ctx.Don20H[i-1] - 1
 	sig := s.Next(ctx, i)

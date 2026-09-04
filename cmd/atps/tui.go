@@ -16,7 +16,7 @@ func cmdTUI() *cobra.Command {
 		Short: "Lancia TUI interattiva — backtest visuale con grafici ASCII e report HTML",
 		Long:  `TUI ATPS: seleziona simbolo/variante/interval, lancia backtest, vedi KPI + equity sparkline + trades, genera report HTML MT5-style self-contained.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
 			// if no tty, fallback to textual
 			m := tui.New(cfg, cfgPath)
 			p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())

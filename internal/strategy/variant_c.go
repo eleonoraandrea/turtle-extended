@@ -50,16 +50,18 @@ func (s *VariantC) Next(ctx *Context, i int) Signal {
 	if i > 0 && ctx.OI[i-1] != 0 && !math.IsNaN(ctx.OI[i]) && !math.IsNaN(ctx.OI[i-1]) {
 		oiDelta = (ctx.OI[i] - ctx.OI[i-1]) / ctx.OI[i-1]
 	}
+	// open_interest.filter=false disattiva TUTTI i veto OI (funding/OI solo costo/informazione)
+	oiFilterOn := s.cfg.OpenInterest.Filter
 	// For C we require oiDelta > threshold for either direction (confirm participation) else veto
 	hasOIData := ctx.OI[i] != 0 && !math.IsNaN(ctx.OI[i])
-	oiOk := !hasOIData || oiDelta >= -c.OIDeltaThreshold // allow slight drop but not big drop
+	oiOk := !oiFilterOn || !hasOIData || oiDelta >= -c.OIDeltaThreshold // allow slight drop but not big drop
 	if !oiOk {
 		return Signal{Side: 0, Reason: "C OI veto"}
 	}
 	hh20Prev := ctx.Don20H[i-1]
 	ll20Prev := ctx.Don20L[i-1]
 	if trendLong && !math.IsNaN(hh20Prev) && closePx > hh20Prev && prevClose <= hh20Prev {
-		if hasOIData && oiDelta < c.OIDeltaThreshold {
+		if oiFilterOn && hasOIData && oiDelta < c.OIDeltaThreshold {
 			// weak OI, reduce strength but still allow? For C require
 			return Signal{Side: 0, Reason: "C OI weak long"}
 		}
@@ -67,7 +69,7 @@ func (s *VariantC) Next(ctx *Context, i int) Signal {
 		return Signal{Side: 1, Strength: 1, StopPrice: stop, Reason: "C HH20 long OI+vol ok", Meta: map[string]float64{"adx": adx, "fundingZ": fundingZ, "oiDelta": oiDelta}}
 	}
 	if trendShort && !math.IsNaN(ll20Prev) && closePx < ll20Prev && prevClose >= ll20Prev {
-		if hasOIData && oiDelta < c.OIDeltaThreshold {
+		if oiFilterOn && hasOIData && oiDelta < c.OIDeltaThreshold {
 			return Signal{Side: 0, Reason: "C OI weak short"}
 		}
 		stop := closePx + c.ATRStopMult*atr

@@ -1,0 +1,2 @@
+[     349ms] [ERROR] Failed to load resource: the server responded with a status of 400 () @ https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=4h&limit=5&startTime=1577836800000&endTime=1788460800000:0
+[     382ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://fapi.binance.com/favicon.ico:0

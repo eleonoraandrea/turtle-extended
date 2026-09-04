@@ -32,19 +32,16 @@ func (s *VariantD) Next(ctx *Context, i int) Signal {
 		// allow only if vol regime high and breakout big?
 		return Signal{Side: 0, Reason: "D adx filter"}
 	}
-	// crash brake: if last bar drop > threshold -> veto
+	// crash brake: veto entries on the crash bar itself and for the cooldown
+	// window (6 bars) after any bar whose return exceeded the threshold
 	if c.UseCrashBrake && i >= 2 {
-		ret := (closePx - ctx.Close[i-1]) / ctx.Close[i-1] * 100
-		if math.Abs(ret) > 8.0 { // simplified: if big drop, veto next entries for 6 bars
-			// check if within 6 bars of big move: lookback
-			for k := i - 6; k < i; k++ {
-				if k < 1 {
-					continue
-				}
-				r2 := (ctx.Close[k] - ctx.Close[k-1]) / ctx.Close[k-1] * 100
-				if math.Abs(r2) > s.cfg.Portfolio.CrashBrakeDropPct {
-					return Signal{Side: 0, Reason: "D crash brake"}
-				}
+		for k := i - 5; k <= i; k++ {
+			if k < 1 {
+				continue
+			}
+			r2 := (ctx.Close[k] - ctx.Close[k-1]) / ctx.Close[k-1] * 100
+			if math.Abs(r2) >= s.cfg.Portfolio.CrashBrakeDropPct {
+				return Signal{Side: 0, Reason: "D crash brake"}
 			}
 		}
 	}
@@ -68,6 +65,8 @@ func (s *VariantD) Next(ctx *Context, i int) Signal {
 	if hasOI {
 		oiDelta = (ctx.OI[i] - ctx.OI[i-1]) / ctx.OI[i-1]
 	}
+	// open_interest.filter=false disattiva i veto OI (resta solo informativo)
+	oiFilterOn := s.cfg.OpenInterest.Filter
 	fundingZ := ctx.FundingZ[i] // solo per Meta, non per veto
 	// adaptive channel selection based on volRegime
 	var hhPrev, llPrev float64
@@ -106,14 +105,14 @@ func (s *VariantD) Next(ctx *Context, i int) Signal {
 	}
 	// long — funding non blocca più (solo costo)
 	if trendLong && !math.IsNaN(hhPrev) && closePx > hhPrev && prevClose <= hhPrev {
-		if hasOI && oiDelta < c.OIDeltaThreshold {
+		if oiFilterOn && hasOI && oiDelta < c.OIDeltaThreshold {
 			return Signal{Side: 0, Reason: "D OI weak long"}
 		}
 		stop := closePx - atrMult*atr
 		return Signal{Side: 1, Strength: 1, StopPrice: stop, Reason: "D " + channel + " long adaptive", Meta: map[string]float64{"atrMult": atrMult, "adx": adx, "volReg": volReg, "oiDelta": oiDelta, "fundingZ": fundingZ}}
 	}
 	if trendShort && !math.IsNaN(llPrev) && closePx < llPrev && prevClose >= llPrev {
-		if hasOI && oiDelta < c.OIDeltaThreshold {
+		if oiFilterOn && hasOI && oiDelta < c.OIDeltaThreshold {
 			return Signal{Side: 0, Reason: "D OI weak short"}
 		}
 		stop := closePx + atrMult*atr
@@ -122,28 +121,52 @@ func (s *VariantD) Next(ctx *Context, i int) Signal {
 	return Signal{Side: 0, Reason: "D no signal"}
 }
 
-// Trail logic helper for engine: compute chandelier or donchian trailing stop
+// Trail logic helper for engine: compute chandelier or donchian trailing stop.
+// The chandelier is computed on the fly so the caller's atrMult is honored:
+// long = highestHigh(22) − mult×ATR, short = lowestLow(22) + mult×ATR.
 func TrailStop(ctx *Context, i int, side int, atrMult float64, mode string) float64 {
 	if i < 1 {
 		return math.NaN()
 	}
-	if side == 1 {
-		if mode == "chandelier" {
-			if !math.IsNaN(ctx.ChandelierLong[i]) {
-				return ctx.ChandelierLong[i]
+	if atrMult <= 0 {
+		atrMult = 3.0
+	}
+	if mode == "chandelier" {
+		atr := ctx.ATR[i]
+		if !math.IsNaN(atr) && atr > 0 {
+			const lookback = 22
+			lo := i - lookback + 1
+			if lo < 0 {
+				lo = 0
+			}
+			if side == 1 {
+				hh := math.Inf(-1)
+				for k := lo; k <= i; k++ {
+					if ctx.High[k] > hh {
+						hh = ctx.High[k]
+					}
+				}
+				return hh - atrMult*atr
+			}
+			if side == -1 {
+				ll := math.Inf(1)
+				for k := lo; k <= i; k++ {
+					if ctx.Low[k] < ll {
+						ll = ctx.Low[k]
+					}
+				}
+				return ll + atrMult*atr
 			}
 		}
+		// ATR unavailable → fall through to the donchian fallback below
+	}
+	if side == 1 {
 		// donchian low fallback
 		if !math.IsNaN(ctx.Don20L[i]) {
 			return ctx.Don20L[i]
 		}
 	}
 	if side == -1 {
-		if mode == "chandelier" {
-			if !math.IsNaN(ctx.ChandelierShort[i]) {
-				return ctx.ChandelierShort[i]
-			}
-		}
 		if !math.IsNaN(ctx.Don20H[i]) {
 			return ctx.Don20H[i]
 		}

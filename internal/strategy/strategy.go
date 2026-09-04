@@ -88,10 +88,62 @@ func PrepareCommon(bars data.Bars, cfg *config.Config, variant string) *Context 
 		atrPeriod = cfg.VariantA.ATRPeriod
 	}
 	atr := indicators.ATR(high, low, closeP, atrPeriod)
-	adxPeriod := 14
+	// periodi indicatori wired alla config della variante (default = valori storici)
+	adxPeriod, emaFast, emaSlow := 14, 50, 200
+	volLookback, fundLookback, volSMALen := 100, 30, 20
+	switch variant {
+	case "B":
+		if cfg.VariantB.ADXPeriod > 0 {
+			adxPeriod = cfg.VariantB.ADXPeriod
+		}
+		if cfg.VariantB.EMAFast > 0 {
+			emaFast = cfg.VariantB.EMAFast
+		}
+		if cfg.VariantB.EMASlow > 0 {
+			emaSlow = cfg.VariantB.EMASlow
+		}
+		if cfg.VariantB.VolLookback > 0 {
+			volLookback = cfg.VariantB.VolLookback
+		}
+	case "C":
+		if cfg.VariantC.ADXPeriod > 0 {
+			adxPeriod = cfg.VariantC.ADXPeriod
+		}
+		if cfg.VariantC.EMAFast > 0 {
+			emaFast = cfg.VariantC.EMAFast
+		}
+		if cfg.VariantC.EMASlow > 0 {
+			emaSlow = cfg.VariantC.EMASlow
+		}
+		if cfg.VariantC.FundingZLookback > 0 {
+			fundLookback = cfg.VariantC.FundingZLookback
+		}
+		if cfg.VariantC.VolumeSMA > 0 {
+			volSMALen = cfg.VariantC.VolumeSMA
+		}
+	case "D":
+		if cfg.VariantD.ADXPeriod > 0 {
+			adxPeriod = cfg.VariantD.ADXPeriod
+		}
+		if cfg.VariantD.EMAFast > 0 {
+			emaFast = cfg.VariantD.EMAFast
+		}
+		if cfg.VariantD.EMASlow > 0 {
+			emaSlow = cfg.VariantD.EMASlow
+		}
+		if cfg.VariantD.VolLookback > 0 {
+			volLookback = cfg.VariantD.VolLookback
+		}
+		if cfg.VariantD.FundingZLookback > 0 {
+			fundLookback = cfg.VariantD.FundingZLookback
+		}
+		if cfg.VariantD.VolumeSMA > 0 {
+			volSMALen = cfg.VariantD.VolumeSMA
+		}
+	}
 	adx, _plus, _minus := indicators.ADX(high, low, closeP, adxPeriod)
-	ema50 := indicators.EMA(closeP, 50)
-	ema200 := indicators.EMA(closeP, 200)
+	ema50 := indicators.EMA(closeP, emaFast)
+	ema200 := indicators.EMA(closeP, emaSlow)
 	sma200 := indicators.SMA(closeP, 200)
 	don20h := indicators.DonchianHigh(high, 20)
 	don20l := indicators.DonchianLow(low, 20)
@@ -99,9 +151,9 @@ func PrepareCommon(bars data.Bars, cfg *config.Config, variant string) *Context 
 	don55l := indicators.DonchianLow(low, 55)
 	don100h := indicators.DonchianHigh(high, 100)
 	don100l := indicators.DonchianLow(low, 100)
-	volRegime := indicators.VolRegime(atr, 100)
-	fundingZ := indicators.ZScore(funding, 30)
-	volSMA := indicators.SMA(vol, 20)
+	volRegime := indicators.VolRegime(atr, volLookback)
+	fundingZ := indicators.ZScore(funding, fundLookback)
+	volSMA := indicators.SMA(vol, volSMALen)
 	chLong := indicators.ChandelierLong(high, atr, 22, 3.0)
 	chShort := indicators.ChandelierShort(low, atr, 22, 3.0)
 	return &Context{

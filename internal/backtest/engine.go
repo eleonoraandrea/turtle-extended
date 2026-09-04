@@ -61,8 +61,9 @@ type Position struct {
 	Notional     float64
 	RiskAmount   float64
 	SizingLog    string
-	IsSatellite  bool // true = satellite 30% (wide trailing, captures +5R/+10R)
-	DonExitLen   int  // per-position Donchian exit length (core 20, satellite 55)
+	EntryFee     float64 // entry-side fee already charged to equity
+	IsSatellite  bool    // true = satellite 30% (wide trailing, captures +5R/+10R)
+	DonExitLen   int     // per-position Donchian exit length (core 20, satellite 55)
 }
 
 type EquityPoint struct {
@@ -211,14 +212,18 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 			exit := false
 			exitReason := ""
 			exitPrice := bar.Close
-			// per-position Donchian level
+			// per-position Donchian level — PRIOR bar's channel: the current bar's
+			// own low/high is always inside its own channel, so comparing against
+			// the band computed at bar i makes the close-exit unreachable.
 			var donL, donH float64
-			if pos.DonExitLen == 55 {
-				donL = donExitL55[i]
-				donH = donExitH55[i]
-			} else {
-				donL = donExitL[i]
-				donH = donExitH[i]
+			if i >= 1 {
+				if pos.DonExitLen == 55 {
+					donL = donExitL55[i-1]
+					donH = donExitH55[i-1]
+				} else {
+					donL = donExitL[i-1]
+					donH = donExitH[i-1]
+				}
 			}
 
 			if pos.Side == 1 {
@@ -226,6 +231,10 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					exit = true
 					exitReason = "stop"
 					exitPrice = pos.StopPrice
+					if bar.Open < exitPrice {
+						// gap through the stop: a stop-market fills near the open, not at the stop
+						exitPrice = bar.Open
+					}
 					if eng.SlippageBps > 0 {
 						slip := exitPrice * eng.SlippageBps / 10000.0
 						exitPrice -= slip
@@ -243,9 +252,12 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					var newStop float64
 					if eng.TrailMode == "chandelier" {
 						// satellite uses wider trail to let large winners run
-						mult := 3.0
+						mult := eng.TrailATRMult
+						if mult <= 0 {
+							mult = 3.0
+						}
 						if pos.IsSatellite {
-							mult = 4.0
+							mult += 1.0
 						}
 						newStop = strategy.TrailStop(ctx, i, pos.Side, mult, "chandelier")
 					} else {
@@ -260,6 +272,10 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					exit = true
 					exitReason = "stop"
 					exitPrice = pos.StopPrice
+					if bar.Open > exitPrice {
+						// gap through the stop: fill near the open
+						exitPrice = bar.Open
+					}
 					if eng.SlippageBps > 0 {
 						slip := exitPrice * eng.SlippageBps / 10000.0
 						exitPrice += slip
@@ -276,9 +292,12 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 				} else {
 					var newStop float64
 					if eng.TrailMode == "chandelier" {
-						mult := 3.0
+						mult := eng.TrailATRMult
+						if mult <= 0 {
+							mult = 3.0
+						}
 						if pos.IsSatellite {
-							mult = 4.0
+							mult += 1.0
 						}
 						newStop = strategy.TrailStop(ctx, i, pos.Side, mult, "chandelier")
 					} else {
@@ -314,10 +333,12 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 				} else {
 					pnl = (pos.EntryPrice - exitPrice) * pos.Qty
 				}
-				fee := (pos.EntryPrice + exitPrice) * pos.Qty * eng.FeeBps / 10000.0
+				// entry fee was already charged at fill; charge only the exit side here
+				exitFee := exitPrice * pos.Qty * eng.FeeBps / 10000.0
+				fee := pos.EntryFee + exitFee
 				pnlNet := pnl - fee - pos.FundingAccum
-				equity += pnl - fee
-				totalFee += fee
+				equity += pnl - exitFee
+				totalFee += exitFee
 				rMult := 0.0
 				if pos.RiskAmount > 0 {
 					rMult = pnlNet / pos.RiskAmount
@@ -351,10 +372,11 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					} else {
 						pnl = (pos.EntryPrice - bar.Close) * pos.Qty
 					}
-					fee := (pos.EntryPrice + bar.Close) * pos.Qty * eng.FeeBps / 10000.0
+					exitFee := bar.Close * pos.Qty * eng.FeeBps / 10000.0
+					fee := pos.EntryFee + exitFee
 					pnlNet := pnl - fee - pos.FundingAccum
-					equity += pnl - fee
-					totalFee += fee
+					equity += pnl - exitFee
+					totalFee += exitFee
 					rMult := 0.0
 					if pos.RiskAmount > 0 {
 						rMult = pnlNet / pos.RiskAmount
@@ -384,14 +406,16 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 			ddPct = (curEq - peak) / peak * 100 // negative
 		}
 
-		if i < brakeUntil {
+		if i < brakeUntil || curEq <= 0 {
 			equityCurve = append(equityCurve, EquityPoint{Time: bar.Time, Equity: curEq, Drawdown: ddPct, Price: bar.Close, Heat: openHeat(), Leverage: openNotional(bar.Close) / math.Max(curEq, 1)})
 			continue
 		}
 
 		// ── signal + RISK-BASED SIZING with DYNAMIC LEVERAGE ──
 		sig := strat.Next(ctx, i)
-		if sig.Side != 0 {
+		// with UseNextOpen a signal on the final bar can never fill: discard it
+		// instead of entering at close and instantly closing EOD with phantom fees.
+		if sig.Side != 0 && !(eng.UseNextOpen && i+1 >= n) {
 			atr := ctx.ATR[i]
 			if math.IsNaN(atr) {
 				atr = 0
@@ -430,160 +454,173 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					stopPx = 0
 				}
 			}
-
-			// market state for risk engine — includes correlated heat for 2% limit
-			// sameSideHeat computed earlier for pyramiding; recompute for fresh entry as well
-			corrHeat := 0.0
-			for _, p := range positions {
-				if p.Side == sig.Side {
-					corrHeat += p.RiskPct
-				}
+			// the stop must sit on the losing side of the fill: a long stop above
+			// entry (or a short stop below it) is invalid and must not be traded
+			stopValid := (sig.Side == 1 && stopPx < fillPrice) || (sig.Side == -1 && stopPx > fillPrice)
+			if !stopValid {
+				sig.Side = 0
 			}
-			ms := risk.MarketState{
-				Equity:                 math.Max(curEq, 1),
-				Price:                  fillPrice,
-				ATR:                    atr,
-				StopPrice:              stopPx,
-				Side:                   sig.Side,
-				VolRegime:              ctx.VolRegime[i],
-				ADX:                    ctx.ADX[i],
-				FundingZ:               ctx.FundingZ[i],
-				VolAnnualizedPct:       risk.AnnualizedVolPct(atr, fillPrice, intervalH),
-				PortfolioHeatPct:       openHeat(),
-				PortfolioCorrelatedPct: corrHeat,
-				EquityDDPct:            -ddPct, // positive number
-			}
+			if sig.Side != 0 {
 
-			// ── pyramiding: count same-side units (logical entries) ──
-			// When satellite splits an entry into 2 positions (core+sat), count logical entries = ceil(units/ satCount)
-			// Simpler: use earliest.Units as pyramid count for its side; totalHeat for limit still sums all.
-			sameSideHeat := 0.0
-			var earliest *Position
-			for _, p := range positions {
-				if p.Side == sig.Side {
-					sameSideHeat += p.RiskPct
-					if earliest == nil {
-						earliest = p
+				// market state for risk engine — includes correlated heat for 2% limit
+				// sameSideHeat computed earlier for pyramiding; recompute for fresh entry as well
+				corrHeat := 0.0
+				for _, p := range positions {
+					if p.Side == sig.Side {
+						corrHeat += p.RiskPct
 					}
 				}
-			}
-			sameSideUnits := 0
-			if earliest != nil {
-				sameSideUnits = earliest.Units
-				// If satellite split active, the total Units is ~2× logical, adjust maxUnits logic by using earliest only
-			}
-			hasSameSide := earliest != nil
-			if hasSameSide {
-				// ── pyramiding ──
-				if risk.CanPyramid(earliest.EntryPrice, bar.Close, atr, sig.Side, sameSideUnits, eng.PyramidingMax, eng.PyramidStepATR) {
-					dec := risk.Size(ms, lim)
-					// risk_neutral: pyramid does not increase total risk (stop of existing moved to breakeven)
-					if lim.PyramidingRiskNeutral {
-						// keep total risk near base: pyramid risk is small, not added to heat
-						dec.RiskPct = dec.RiskPct * 0.5 // pyramid at half risk when risk_neutral
-						dec.RiskAmount = dec.RiskPct / 100 * ms.Equity
-						dec.Qty = dec.RiskAmount / dec.StopDist
-						dec.Notional = dec.Qty * fillPrice
-						dec.Leverage = dec.Notional / ms.Equity
-						dec.Factors = append(dec.Factors, "pyramid risk_neutral ×0.5")
-					} else {
-						dec.Notional = dec.Qty * fillPrice
-						dec.RiskAmount = dec.Qty * dec.StopDist
-						if ms.Equity > 0 {
-							dec.RiskPct = dec.RiskAmount / ms.Equity * 100
-							// total leverage after pyramid
-							totalNotional := 0.0
-							for _, p := range positions {
-								if p.Side == sig.Side {
-									totalNotional += p.Notional
-								}
-							}
-							dec.Leverage = (totalNotional + dec.Notional) / ms.Equity
+				ms := risk.MarketState{
+					Equity:                 curEq,
+					Price:                  fillPrice,
+					ATR:                    atr,
+					StopPrice:              stopPx,
+					Side:                   sig.Side,
+					VolRegime:              ctx.VolRegime[i],
+					ADX:                    ctx.ADX[i],
+					FundingZ:               ctx.FundingZ[i],
+					VolAnnualizedPct:       risk.AnnualizedVolPct(atr, fillPrice, intervalH),
+					PortfolioHeatPct:       openHeat(),
+					PortfolioCorrelatedPct: corrHeat,
+					EquityDDPct:            -ddPct, // positive number
+				}
+
+				// ── pyramiding: count same-side units (logical entries) ──
+				// When satellite splits an entry into 2 positions (core+sat), count logical entries = ceil(units/ satCount)
+				// Simpler: use earliest.Units as pyramid count for its side; totalHeat for limit still sums all.
+				sameSideHeat := 0.0
+				var earliest *Position
+				for _, p := range positions {
+					if p.Side == sig.Side {
+						sameSideHeat += p.RiskPct
+						if earliest == nil {
+							earliest = p
 						}
 					}
+				}
+				sameSideUnits := 0
+				if earliest != nil {
+					sameSideUnits = earliest.Units
+					// If satellite split active, the total Units is ~2× logical, adjust maxUnits logic by using earliest only
+				}
+				hasSameSide := earliest != nil
+				if hasSameSide {
+					// ── pyramiding ──
+					if risk.CanPyramid(earliest.EntryPrice, bar.Close, atr, sig.Side, sameSideUnits, eng.PyramidingMax, eng.PyramidStepATR) {
+						dec := risk.Size(ms, lim)
+						// risk_neutral: pyramid does not increase total risk (stop of existing moved to breakeven)
+						if lim.PyramidingRiskNeutral {
+							// keep total risk near base: pyramid risk is small, not added to heat
+							dec.RiskPct = dec.RiskPct * 0.5 // pyramid at half risk when risk_neutral
+							dec.RiskAmount = dec.RiskPct / 100 * ms.Equity
+							dec.Qty = dec.RiskAmount / dec.StopDist
+							dec.Notional = dec.Qty * fillPrice
+							dec.Leverage = dec.Notional / ms.Equity
+							dec.Factors = append(dec.Factors, "pyramid risk_neutral ×0.5")
+						} else {
+							dec.Notional = dec.Qty * fillPrice
+							dec.RiskAmount = dec.Qty * dec.StopDist
+							if ms.Equity > 0 {
+								dec.RiskPct = dec.RiskAmount / ms.Equity * 100
+								// total leverage after pyramid
+								totalNotional := 0.0
+								for _, p := range positions {
+									if p.Side == sig.Side {
+										totalNotional += p.Notional
+									}
+								}
+								dec.Leverage = (totalNotional + dec.Notional) / ms.Equity
+							}
+						}
+						if dec.Accept && dec.Qty > 0 {
+							fee := fillPrice * dec.Qty * eng.FeeBps / 10000.0
+							slipCost := slipAmt * dec.Qty
+							equity -= fee
+							totalFee += fee
+							totalSlippage += slipCost
+							// risk_neutral: total risk stays near base, so don't sum full pyramid risk
+							if lim.PyramidingRiskNeutral {
+								// keep total heat constant: pyramid is funded by trailing existing stop to breakeven
+								earliest.EntryPrice = (earliest.EntryPrice*earliest.Qty + fillPrice*dec.Qty) / (earliest.Qty + dec.Qty)
+								earliest.Qty += dec.Qty
+								earliest.Units++
+								earliest.Notional += dec.Notional
+								earliest.EntryFee += fee
+								earliest.Leverage = earliest.Notional / ms.Equity
+								// risk stays same (risk_neutral) — don't add RiskPct/RiskAmount
+								if !math.IsNaN(stopPx) {
+									earliest.StopPrice = risk.TrailStopPosition(earliest.StopPrice, stopPx, sig.Side)
+								}
+								earliest.SizingLog += " | pyramid(risk_neutral): " + logFactors(dec)
+							} else {
+								totalQty := earliest.Qty + dec.Qty
+								earliest.EntryPrice = (earliest.EntryPrice*earliest.Qty + fillPrice*dec.Qty) / totalQty
+								earliest.Qty = totalQty
+								earliest.Units++
+								earliest.RiskPct += dec.RiskPct
+								earliest.RiskAmount += dec.RiskAmount
+								earliest.Notional += dec.Notional
+								earliest.EntryFee += fee
+								earliest.Leverage = earliest.Notional / ms.Equity
+								if !math.IsNaN(stopPx) {
+									earliest.StopPrice = risk.TrailStopPosition(earliest.StopPrice, stopPx, sig.Side)
+								}
+								earliest.SizingLog += " | pyramid: " + logFactors(dec)
+							}
+						}
+					}
+				} else if len(positions) == 0 {
+					// ── fresh entry: full risk-based sizing + satellite 30% for positive skew ──
+					dec := risk.Size(ms, lim)
 					if dec.Accept && dec.Qty > 0 {
 						fee := fillPrice * dec.Qty * eng.FeeBps / 10000.0
 						slipCost := slipAmt * dec.Qty
 						equity -= fee
 						totalFee += fee
 						totalSlippage += slipCost
-						// risk_neutral: total risk stays near base, so don't sum full pyramid risk
-						if lim.PyramidingRiskNeutral {
-							// keep total heat constant: pyramid is funded by trailing existing stop to breakeven
-							earliest.Qty += dec.Qty
-							earliest.Units++
-							earliest.Notional += dec.Notional
-							earliest.Leverage = earliest.Notional / ms.Equity
-							// risk stays same (risk_neutral) — don't add RiskPct/RiskAmount
-							if !math.IsNaN(stopPx) {
-								earliest.StopPrice = risk.TrailStopPosition(earliest.StopPrice, stopPx, sig.Side)
+						if lim.SatelliteEnabled && lim.SatelliteAlloc > 0 && lim.SatelliteAlloc < 1 {
+							// split total qty into core (70%) and satellite (30%): satellite holds for large winners +5R/+10R
+							coreQty := dec.Qty * (1 - lim.SatelliteAlloc)
+							satQty := dec.Qty * lim.SatelliteAlloc
+							coreRisk := dec.RiskPct * (1 - lim.SatelliteAlloc)
+							satRisk := dec.RiskPct * lim.SatelliteAlloc
+							coreNotional := coreQty * fillPrice
+							satNotional := satQty * fillPrice
+							coreLev := coreNotional / ms.Equity
+							satLev := satNotional / ms.Equity
+							corePos := &Position{
+								Symbol: eng.Symbol, Side: sig.Side, Qty: coreQty,
+								EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
+								StopPrice: stopPx, Units: 1, EntryBarIdx: i,
+								RiskPct: coreRisk, Leverage: coreLev,
+								Notional: coreNotional, RiskAmount: coreRisk / 100 * ms.Equity,
+								SizingLog:   logFactors(dec) + " | core 70%",
+								EntryFee:    fee * (1 - lim.SatelliteAlloc),
+								IsSatellite: false, DonExitLen: 20,
 							}
-							earliest.SizingLog += " | pyramid(risk_neutral): " + logFactors(dec)
+							satPos := &Position{
+								Symbol: eng.Symbol, Side: sig.Side, Qty: satQty,
+								EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
+								StopPrice: stopPx, Units: 1, EntryBarIdx: i,
+								RiskPct: satRisk, Leverage: satLev,
+								Notional: satNotional, RiskAmount: satRisk / 100 * ms.Equity,
+								SizingLog:   logFactors(dec) + " | satellite 30% (wide Don55)",
+								EntryFee:    fee * lim.SatelliteAlloc,
+								IsSatellite: true, DonExitLen: 55,
+							}
+							positions = append(positions, corePos, satPos)
 						} else {
-							totalQty := earliest.Qty + dec.Qty
-							earliest.EntryPrice = (earliest.EntryPrice*earliest.Qty + fillPrice*dec.Qty) / totalQty
-							earliest.Qty = totalQty
-							earliest.Units++
-							earliest.RiskPct += dec.RiskPct
-							earliest.RiskAmount += dec.RiskAmount
-							earliest.Notional += dec.Notional
-							earliest.Leverage = earliest.Notional / ms.Equity
-							if !math.IsNaN(stopPx) {
-								earliest.StopPrice = risk.TrailStopPosition(earliest.StopPrice, stopPx, sig.Side)
+							pos := &Position{
+								Symbol: eng.Symbol, Side: sig.Side, Qty: dec.Qty,
+								EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
+								StopPrice: stopPx, Units: 1, EntryBarIdx: i,
+								RiskPct: dec.RiskPct, Leverage: dec.Leverage,
+								Notional: dec.Notional, RiskAmount: dec.RiskAmount,
+								SizingLog: logFactors(dec), EntryFee: fee,
+								DonExitLen: 20,
 							}
-							earliest.SizingLog += " | pyramid: " + logFactors(dec)
+							positions = append(positions, pos)
 						}
-					}
-				}
-			} else if len(positions) == 0 {
-				// ── fresh entry: full risk-based sizing + satellite 30% for positive skew ──
-				dec := risk.Size(ms, lim)
-				if dec.Accept && dec.Qty > 0 {
-					fee := fillPrice * dec.Qty * eng.FeeBps / 10000.0
-					slipCost := slipAmt * dec.Qty
-					equity -= fee
-					totalFee += fee
-					totalSlippage += slipCost
-					if lim.SatelliteEnabled && lim.SatelliteAlloc > 0 && lim.SatelliteAlloc < 1 {
-						// split total qty into core (70%) and satellite (30%): satellite holds for large winners +5R/+10R
-						coreQty := dec.Qty * (1 - lim.SatelliteAlloc)
-						satQty := dec.Qty * lim.SatelliteAlloc
-						coreRisk := dec.RiskPct * (1 - lim.SatelliteAlloc)
-						satRisk := dec.RiskPct * lim.SatelliteAlloc
-						coreNotional := coreQty * fillPrice
-						satNotional := satQty * fillPrice
-						coreLev := coreNotional / ms.Equity
-						satLev := satNotional / ms.Equity
-						corePos := &Position{
-							Symbol: eng.Symbol, Side: sig.Side, Qty: coreQty,
-							EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
-							StopPrice: stopPx, Units: 1, EntryBarIdx: i,
-							RiskPct: coreRisk, Leverage: coreLev,
-							Notional: coreNotional, RiskAmount: coreRisk / 100 * ms.Equity,
-							SizingLog:   logFactors(dec) + " | core 70%",
-							IsSatellite: false, DonExitLen: 20,
-						}
-						satPos := &Position{
-							Symbol: eng.Symbol, Side: sig.Side, Qty: satQty,
-							EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
-							StopPrice: stopPx, Units: 1, EntryBarIdx: i,
-							RiskPct: satRisk, Leverage: satLev,
-							Notional: satNotional, RiskAmount: satRisk / 100 * ms.Equity,
-							SizingLog:   logFactors(dec) + " | satellite 30% (wide Don55)",
-							IsSatellite: true, DonExitLen: 55,
-						}
-						positions = append(positions, corePos, satPos)
-					} else {
-						pos := &Position{
-							Symbol: eng.Symbol, Side: sig.Side, Qty: dec.Qty,
-							EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
-							StopPrice: stopPx, Units: 1, EntryBarIdx: i,
-							RiskPct: dec.RiskPct, Leverage: dec.Leverage,
-							Notional: dec.Notional, RiskAmount: dec.RiskAmount,
-							SizingLog:  logFactors(dec),
-							DonExitLen: 20,
-						}
-						positions = append(positions, pos)
 					}
 				}
 			}
@@ -592,10 +629,16 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 		// equity curve point with heat + leverage audit
 		unrealized = 0.0
 		for _, pos := range positions {
+			// a position entered with a next-open fill does not exist yet at this
+			// bar's close: mark it at its fill price (unrealized = 0 at signal bar)
+			markPx := bar.Close
+			if eng.UseNextOpen && pos.EntryBarIdx == i {
+				markPx = pos.EntryPrice
+			}
 			if pos.Side == 1 {
-				unrealized += (bar.Close - pos.EntryPrice) * pos.Qty
+				unrealized += (markPx - pos.EntryPrice) * pos.Qty
 			} else {
-				unrealized += (pos.EntryPrice - bar.Close) * pos.Qty
+				unrealized += (pos.EntryPrice - markPx) * pos.Qty
 			}
 		}
 		curEq = equity + unrealized
@@ -619,10 +662,11 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 		} else {
 			pnl = (pos.EntryPrice - exitPrice) * pos.Qty
 		}
-		fee := (pos.EntryPrice + exitPrice) * pos.Qty * eng.FeeBps / 10000.0
+		exitFee := exitPrice * pos.Qty * eng.FeeBps / 10000.0
+		fee := pos.EntryFee + exitFee
 		pnlNet := pnl - fee - pos.FundingAccum
-		equity += pnl - fee
-		totalFee += fee
+		equity += pnl - exitFee
+		totalFee += exitFee
 		rMult := 0.0
 		if pos.RiskAmount > 0 {
 			rMult = pnlNet / pos.RiskAmount

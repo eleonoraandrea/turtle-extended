@@ -36,15 +36,21 @@ Binance per dati, Orderly per live (isolato con -tags live).`,
 	}
 }
 
-func loadCfg() *config.Config {
+// loadCfg carica la config; se esplicita (--config passato) e non valida,
+// termina con errore invece di degradare silenziosamente al default.
+func loadCfg(explicit bool) *config.Config {
 	c, err := config.Load(cfgPath)
 	if err != nil {
-		// fallback
+		if explicit {
+			fmt.Fprintf(os.Stderr, "config load failed (%s): %v\n", cfgPath, err)
+			os.Exit(1)
+		}
 		c2, err2 := config.Load(config.DefaultPath())
 		if err2 != nil {
 			fmt.Fprintf(os.Stderr, "config load failed %v\n", err)
 			os.Exit(1)
 		}
+		fmt.Fprintf(os.Stderr, "warn: config %s non valida (%v) → uso %s\n", cfgPath, err, config.DefaultPath())
 		return c2
 	}
 	return c
@@ -57,7 +63,7 @@ func cmdDownload() *cobra.Command {
 		Use:   "download",
 		Short: "Scarica OHLCV (+ funding + OI) da Binance e salva CSV allineato",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
 			base := cfg.Data.BinanceBase
 			if base == "" {
 				base = data.DefaultBinanceBase
@@ -161,7 +167,11 @@ func cmdBacktest() *cobra.Command {
 		Use:   "backtest",
 		Short: "Esegui backtest su CSV (o demo sintetico) e genera report HTML",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
+			if interval != "" {
+				cfg.General.Interval = interval // propaga l'interval al motore (funding scaling + report)
+			}
+			csvExplicit := cmd.Flags().Changed("csv")
 			if symbol == "" {
 				symbol = cfg.General.Symbols[0]
 			}
@@ -185,6 +195,11 @@ func cmdBacktest() *cobra.Command {
 					os.Exit(1)
 				}
 				fmt.Printf("loaded %d bars from %s\n", len(bars), csvPath)
+			} else if csvExplicit {
+				// --csv esplicito mancante: ERRORE, non sostituire in silenzio
+				// con dati sintetici (risultati plausibili ma falsi)
+				fmt.Fprintf(os.Stderr, "csv %s non trovato (--csv esplicito)\n", csvPath)
+				os.Exit(1)
 			} else {
 				seedMap := map[string]int64{"BTCUSDT": 42, "ETHUSDT": 1337, "SOLUSDT": 9999}
 				seed := seedMap[symbol]
@@ -192,7 +207,7 @@ func cmdBacktest() *cobra.Command {
 					seed = 42
 				}
 				fmt.Printf("csv %s not found → using synthetic demo (%s %s seed %d)\n", csvPath, symbol, variant, seed)
-				bars = data.GenerateSynthetic(3500, 4*time.Hour, seed)
+				bars = data.GenerateSynthetic(3500, intervalDuration(cfg.General.Interval), seed)
 			}
 			strat := strategy.New(variant, cfg)
 			eng := engineFromCfg(cfg, variant, symbol)
@@ -209,10 +224,13 @@ func cmdBacktest() *cobra.Command {
 				os.Exit(1)
 			}
 			fmt.Printf("report %s\n", outHTML)
-			// save trades json
-			jpath := strings.Replace(outHTML, ".html", "_trades.json", 1)
+			// save trades json — TrimSuffix evita di sovrascrivere il report
+			// quando outHTML non termina con .html
+			jpath := strings.TrimSuffix(outHTML, ".html") + "_trades.json"
 			b, _ := json.MarshalIndent(res.Trades, "", "  ")
-			os.WriteFile(jpath, b, 0644)
+			if err := os.WriteFile(jpath, b, 0644); err != nil {
+				fmt.Fprintf(os.Stderr, "trades json %s: %v\n", jpath, err)
+			}
 			// walk-forward hint
 			fmt.Printf("next: atps walk-forward --symbol %s --variant %s --csv %s\n", symbol, variant, csvPath)
 		},
@@ -231,7 +249,7 @@ func cmdCompare() *cobra.Command {
 		Use:   "compare",
 		Short: "Confronto A/B/C/D su uno o più simboli → report comparison HTML",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
 			syms := strings.Split(symbolsCSV, ",")
 			if symbolsCSV == "" {
 				syms = cfg.Compare.Symbols
@@ -303,7 +321,7 @@ func cmdWalkForward() *cobra.Command {
 		Use:   "walk-forward",
 		Short: "Walk-forward analysis su folds",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
 			if symbol == "" {
 				symbol = cfg.General.Symbols[0]
 			}
@@ -360,7 +378,7 @@ func cmdMonteCarlo() *cobra.Command {
 		Use:   "montecarlo",
 		Short: "MonteCarlo bootstrap (block) sul trade list",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
 			if symbol == "" {
 				symbol = cfg.General.Symbols[0]
 			}
@@ -413,7 +431,7 @@ func cmdPerturb() *cobra.Command {
 		Use:   "perturb",
 		Short: "Parameter perturbation ±20% — test robustezza (no overfit)",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
 			if symbol == "" {
 				symbol = cfg.General.Symbols[0]
 			}
@@ -461,7 +479,7 @@ func cmdPortfolio() *cobra.Command {
 		Use:   "portfolio",
 		Short: "Portfolio test — BTC/ETH/SOL con heat condiviso (max_open_risk 3%)",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
 			if variant == "" {
 				variant = "D"
 			}
@@ -502,7 +520,7 @@ func cmdGenerateDemo() *cobra.Command {
 		Use:   "generate-demo",
 		Short: "Genera dataset sintetico demo e salva CSV (per verificare pipeline)",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
 			seedMap := map[string]int64{"BTCUSDT": 42, "ETHUSDT": 1337, "SOLUSDT": 9999}
 			for _, sym := range cfg.General.Symbols {
 				seed := seedMap[sym]
@@ -524,7 +542,7 @@ func cmdReportDemo() *cobra.Command {
 		Use:   "demo",
 		Short: "Run full demo (synthetic) A/B/C/D + reports — verifica pipeline",
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := loadCfg()
+			cfg := loadCfg(cmd.Flags().Changed("config"))
 			seedMap := map[string]int64{"BTCUSDT": 42, "ETHUSDT": 1337, "SOLUSDT": 9999}
 			for _, sym := range cfg.General.Symbols {
 				seed := seedMap[sym]
@@ -555,17 +573,64 @@ func engineFromCfg(cfg *config.Config, variant, symbol string) backtest.EngineCo
 	} else {
 		trailMode = "donchian"
 	}
+	// pyramiding: la nuova spec (pyramiding.enabled/max_additions) vince sulla
+	// legacy backtest.pyramiding_max_units; enabled=false → 0 addizioni.
+	// max_additions conta le ADDIZIONI oltre l'unità iniziale → unità totali = N+1
+	pyrMax := cfg.Backtest.PyramidingMaxUnits
+	if cfg.Pyramiding.Enabled {
+		if cfg.Pyramiding.MaxAdditions > 0 {
+			pyrMax = cfg.Pyramiding.MaxAdditions + 1
+		}
+	} else {
+		pyrMax = 0
+	}
+	donExit := cfg.Trend.DonchianExit
+	if donExit <= 0 {
+		donExit = 20
+	}
 	return backtest.EngineConfig{
 		Variant: variant, Symbol: symbol,
 		InitialCapital: cfg.General.InitialCapital,
 		FeeBps:         cfg.Costs.FeeBps, SlippageBps: cfg.Costs.SlippageBps,
 		Leverage:       cfg.Costs.Leverage,
 		UseNextOpen:    cfg.Backtest.UseNextOpenFill,
-		PyramidingMax:  cfg.Backtest.PyramidingMaxUnits,
+		PyramidingMax:  pyrMax,
 		PyramidStepATR: cfg.Backtest.PyramidStepATR,
 		TrailATRMult:   cfg.Backtest.TrailATRMult,
 		TrailMode:      trailMode,
-		DonExit:        20,
+		DonExit:        donExit,
+	}
+}
+
+// intervalDuration converte l'interval Binance in time.Duration.
+func intervalDuration(s string) time.Duration {
+	switch s {
+	case "1m":
+		return time.Minute
+	case "3m":
+		return 3 * time.Minute
+	case "5m":
+		return 5 * time.Minute
+	case "15m":
+		return 15 * time.Minute
+	case "30m":
+		return 30 * time.Minute
+	case "1h":
+		return time.Hour
+	case "2h":
+		return 2 * time.Hour
+	case "4h":
+		return 4 * time.Hour
+	case "6h":
+		return 6 * time.Hour
+	case "8h":
+		return 8 * time.Hour
+	case "12h":
+		return 12 * time.Hour
+	case "1d":
+		return 24 * time.Hour
+	default:
+		return 4 * time.Hour
 	}
 }
 

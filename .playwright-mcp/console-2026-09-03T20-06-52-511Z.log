@@ -1,0 +1,12 @@
+[    1608ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://developers.binance.com/favicon.ico:0
+[    2911ms] [LOG] %cZUDOKU%c by Zuplo v0.70.37 color: #FF00BD ;line-height: 50px ;font-weight: bolder ;font-size: 30px ;-webkit-text-stroke-width: 1px ;-webkit-text-stroke-color: #FF00BD ;text-transform: uppercase ;text-align: center ;letter-spacing: 5px color: #Df0097 ;line-height: 50px ;font-weight: bolder ;font-size: 15px ;text-align: center ;letter-spacing: 5px @ https://developers.binance.com/en/docs/assets/entry.client-Cw1PT_x5.js:616
+[    2911ms] [LOG] » Learn more about Zudoku https://zudoku.dev @ https://developers.binance.com/en/docs/assets/entry.client-Cw1PT_x5.js:616
+[    5895ms] Error: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+    at kn (https://developers.binance.com/en/docs/assets/entry.client-Cw1PT_x5.js:9:31371)
+    at Mw (https://developers.binance.com/en/docs/assets/entry.client-Cw1PT_x5.js:9:83293)
+    at dA (https://developers.binance.com/en/docs/assets/entry.client-Cw1PT_x5.js:9:117653)
+    at mN (https://developers.binance.com/en/docs/assets/entry.client-Cw1PT_x5.js:9:117625)
+    at dN (https://developers.binance.com/en/docs/assets/entry.client-Cw1PT_x5.js:9:117478)
+    at oA (https://developers.binance.com/en/docs/assets/entry.client-Cw1PT_x5.js:9:112942)
+    at kA (https://developers.binance.com/en/docs/assets/entry.client-Cw1PT_x5.js:9:125188)
+    at MessagePort.ie (https://developers.binance.com/en/docs/assets/entry.client-Cw1PT_x5.js:2:3215)

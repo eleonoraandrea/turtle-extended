@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/atps/atps/internal/backtest"
@@ -40,6 +41,8 @@ type Bot struct {
 	maxLogs    int
 	dryRun     bool // true = paper (nessun ordine reale) — NUOVO flag esplicito
 	paper      bool // alias per compat (paper == dryRun)
+	allowLive  bool // true solo se costruito legittimamente in modalità live (CLI gates superati)
+	ticking    atomic.Bool
 	stopCh     chan struct{}
 }
 
@@ -80,19 +83,20 @@ func New(cfg *config.Config, symbol, interval, variant string, dryRun bool) (*Bo
 	}
 
 	b := &Bot{
-		cfg:      cfg,
-		symbol:   symbol,
-		interval: interval,
-		variant:  variant,
-		adapter:  adapter,
-		binance:  bc,
-		strat:    strat,
-		equity:   cfg.General.InitialCapital,
-		peak:     cfg.General.InitialCapital,
-		maxLogs:  200,
-		dryRun:   dryRun,
-		paper:    paper,
-		stopCh:   make(chan struct{}),
+		cfg:       cfg,
+		symbol:    symbol,
+		interval:  interval,
+		variant:   variant,
+		adapter:   adapter,
+		binance:   bc,
+		strat:     strat,
+		equity:    cfg.General.InitialCapital,
+		peak:      cfg.General.InitialCapital,
+		maxLogs:   200,
+		dryRun:    dryRun,
+		paper:     paper,
+		allowLive: !dryRun, // solo un bot costruito live può fare SetDryRun(false)
+		stopCh:    make(chan struct{}),
 	}
 	// preload history for warmup (500 bars)
 	if err := b.loadHistory(); err != nil {
@@ -158,6 +162,11 @@ func (b *Bot) loadHistory() error {
 func (b *Bot) logf(format string, args ...interface{}) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.logfLocked(format, args...)
+}
+
+// logfLocked appends a log entry assuming b.mu is already held by the caller.
+func (b *Bot) logfLocked(format string, args ...interface{}) {
 	msg := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), fmt.Sprintf(format, args...))
 	b.logs = append(b.logs, msg)
 	if len(b.logs) > b.maxLogs {
@@ -279,11 +288,17 @@ func (b *Bot) SetDryRun(dryRun bool) {
 	if b.dryRun == dryRun {
 		return
 	}
+	if !dryRun && !b.allowLive {
+		// un bot avviato in PAPER non può promuoversi a LIVE (bypasserebbe
+		// i gate CLI --live --i-understand-live): il toggle TUI 'd' resta paper
+		b.logfLocked("SetDryRun(false) IGNORATO: bot avviato in PAPER — live richiede avvio con --dry-run=false --live --i-understand-live")
+		return
+	}
 	b.dryRun = dryRun
 	b.paper = dryRun
 	if dryRun {
 		b.adapter = execution.NewPaper()
-		b.logf("dry-run → PAPER (adapter paper, nessun ordine reale)")
+		b.logfLocked("dry-run → PAPER (adapter paper, nessun ordine reale)")
 	} else {
 		// prova a passare a Orderly se chiavi presenti
 		base := b.cfg.Orderly.Mainnet
@@ -295,12 +310,12 @@ func (b *Bot) SetDryRun(dryRun bool) {
 		secret := os.Getenv("ORDERLY_SECRET")
 		if accountID != "" && key != "" && secret != "" {
 			b.adapter = orderly.New(base, accountID, key, secret)
-			b.logf("dry-run → LIVE (Orderly %s, account %s)", base, accountID)
+			b.logfLocked("dry-run → LIVE (Orderly %s, account %s)", base, accountID)
 		} else {
 			b.adapter = execution.NewPaper()
 			b.dryRun = true
 			b.paper = true
-			b.logf("dry-run false richiesto ma chiavi Orderly mancanti → fallback PAPER")
+			b.logfLocked("dry-run false richiesto ma chiavi Orderly mancanti → fallback PAPER")
 		}
 	}
 }
@@ -315,7 +330,13 @@ func (b *Bot) OrderlySymbol() string {
 
 // Tick fetches latest bar, updates signal, and optionally places order
 // Verificato: non blocca oltre 12s, logga ogni fase per non sembrare "waiting tick"
+// Concorrenza: un solo Tick alla volta (guardia atomica) — due scheduler
+// (b.Start + TUI) non possono inviare ordini duplicati nello stesso istante.
 func (b *Bot) Tick(ctx context.Context) error {
+	if !b.ticking.CompareAndSwap(false, true) {
+		return nil // un altro Tick è in corso: salta (niente doppio ordine)
+	}
+	defer b.ticking.Store(false)
 	b.logf("tick → fetch klines %s %s (dry-run=%v)", b.symbol, b.interval, b.IsDryRun())
 	// 1. refresh bars (fetch last 2) with timeout
 	end := time.Now().UTC()
