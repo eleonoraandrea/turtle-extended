@@ -98,6 +98,19 @@ perturbazione ±20%, Monte Carlo 2000, conferma ETH/SOL senza ri-ottimizzazione)
 | SOLUSDT | btc_opt (baseline) | 4.27% | -24.33% | 0.30 | 1.17 | 570 |
 | SOLUSDT | **atps_v2** | **6.01%** | **-17.13%** | **0.60** | **1.38** | 452 |
 
+### Tentativi di scala v3 (2026-09-04, entrambi bocciati dal protocollo — vedi `reports/V3_VALIDATION.md`)
+
+| Candidato | Full CAGR/DD | Holdout test (CAGR/Calmar) | Esito |
+|---|---|---|---|
+| risk-4% (tetti coordinati) | 39.49% / -19.49% | 7.16 / 0.30 vs v2 12.4 / 0.73 | BOCCIATO: amplifica le perdite nel regime chop 2024-26 |
+| pyramid separate (gambe wide Don55) | 30.76% / -28.66% | 2.11 / 0.08 vs v2 12.4 / 0.73 | BOCCIATO: collassa out-of-sample, viola budget DD -22% |
+
+Configurazione finale del sistema: **atps_v2 (risk 2%, pyramiding OFF)** — resta la baseline validata.
+
+Nota scaling: il backtest ora stampa `scaling ceiling` (tetto effettivo del rischio + vincolo legante)
+e avvisi se un cap clippa il rischio richiesto; il report HTML mostra la card "Tetto scaling" e i
+`notional cap hits`. Niente più clipping silenzioso (es. risk 2.5% ≡ 2.0% del passato).
+
 Vincitore optimizer v2: `atr1.8 donchian don_exit:10 pyramiding:off satellite:0.4 risk:2% close` —
 la selezione DD-constrained ha scartato intrabar/re-entry/pyramiding (feature nel codice, OFF di default).
 
@@ -154,6 +167,9 @@ Safety (`docs/LIVE_EXECUTION_SPEC.md`):
 pessimistico). Il **bot live** genera ancora segnali close-mode su barra chiusa (poll 30s):
 l'esecuzione intrabar live richiede stop-entry orders su Orderly (roadmap). Il bot usa comunque
 la STESSA `backtest.EngineConfigFrom` del backtest per sizing/snapshot (allineato dal 2026-09-04).
+
+`pyramiding.mode=separate` esiste nel motore (gambe indipendenti, exit wide Don55) ma è OFF di default:
+bocciato in validazione (Decisione B in `reports/V3_VALIDATION.md`).
 
 ## Config — user spec per max performance
 
