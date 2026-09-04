@@ -96,7 +96,7 @@ backtest:
 
 # Varianti — BIG IMPROVE: stop 1.8× tight, filtri meno restrittivi, volTarget 50%
 variant_a: # Turtle classico S1 — stop tight per leva più alta a pari 2% risk
-  name: "Variant A — Classic Turtle OPT (atr 1.60, risk 2% fixed, pyr6) — CAGR 94.26 DD -14.61"
+  name: "Variant A — Classic Turtle OPT (post-fix engine, baseline onesta — vedi reports/V2_VALIDATION.md)"
   donchian_entry: 55          # user spec trend 55
   donchian_exit: 20
   donchian_alt: 20

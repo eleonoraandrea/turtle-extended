@@ -79,6 +79,31 @@ Obiettivo max: **Expectancy × Positive Skew × Compounding** — 55-65 perdite 
 
 Motore: bar-by-bar, fill **next open** anti look-ahead, stop intrabar (low ≤ stop), trailing chandelier/donchian, pyramiding 0.5 ATR max 4, crash brake flat 24h se drop 4h ≥8%.
 
+## Performance verificata (2026-09-04, engine post-fix)
+
+Numeri riproducibili con un comando — baseline `btc_opt.yaml` vs `atps_v2.yaml`
+(protocollo completo in `reports/V2_VALIDATION.md`: train/test 70/30, walk-forward 8 folds,
+perturbazione ±20%, Monte Carlo 2000, conferma ETH/SOL senza ri-ottimizzazione):
+
+```bash
+./atps backtest --config configs/atps_v2.yaml --variant A --symbol BTCUSDT --csv data/raw/BTCUSDT_4h.csv
+```
+
+| Symbol | Config | CAGR | MaxDD | Sharpe | PF | Trades |
+|---|---|---|---|---|---|---|
+| BTCUSDT | btc_opt (baseline) | 29.55% | -23.04% | 1.15 | 1.61 | 578 |
+| BTCUSDT | **atps_v2** | **34.31%** | **-17.01%** | **1.50** | **2.14** | 416 |
+| ETHUSDT | btc_opt (baseline) | 17.18% | -28.40% | 0.71 | 1.56 | 600 |
+| ETHUSDT | **atps_v2** | **20.66%** | **-16.14%** | **1.17** | **2.18** | 410 |
+| SOLUSDT | btc_opt (baseline) | 4.27% | -24.33% | 0.30 | 1.17 | 570 |
+| SOLUSDT | **atps_v2** | **6.01%** | **-17.13%** | **0.60** | **1.38** | 452 |
+
+Vincitore optimizer v2: `atr1.8 donchian don_exit:10 pyramiding:off satellite:0.4 risk:2% close` —
+la selezione DD-constrained ha scartato intrabar/re-entry/pyramiding (feature nel codice, OFF di default).
+
+> Nota: i CAGR >90% in commit precedenti (es. "94.26%") NON sono riproducibili sul motore
+> corrente — si riferivano al motore pre-fix audit. Fidati solo di numeri rigenerabili col comando sopra.
+
 ## Report HTML
 
 `reports/*.html` — self-contained (embed JSON, inline SVG equity/drawdown, histogram trade, tabella 32 metriche, monthly/yearly heatmap, regime breakdown LONG/SHORT/Year, trade list MT5 con MAE/MFE/fee/funding/R, Lightweight-Charts 4.1 per candele+equity overlay). Offline apribile via `file://`.
@@ -123,7 +148,16 @@ Safety (`docs/LIVE_EXECUTION_SPEC.md`):
 - Heat 3% totale / 2% correlati, leva hard 5×, crash brake 8% → flat 24h
 - `internal/bot/bot.go` — `risk.LimitsFromConfig` + `Satellite 30%` (core 70% Don20, sat 30% Don55 per skew positivo)
 
+### entry_mode intrabar — limite live
+
+`entry_mode: intrabar` è implementato nel **backtest** (fill a livello canale, stop stesso-barra
+pessimistico). Il **bot live** genera ancora segnali close-mode su barra chiusa (poll 30s):
+l'esecuzione intrabar live richiede stop-entry orders su Orderly (roadmap). Il bot usa comunque
+la STESSA `backtest.EngineConfigFrom` del backtest per sizing/snapshot (allineato dal 2026-09-04).
+
 ## Config — user spec per max performance
+
+Config validato: `configs/atps_v2.yaml` (2026-09-04, vedi reports/V2_VALIDATION.md).
 
 `configs/default.yaml` include `risk/base/min/max`, `portfolio/max_open/max_correlated`, `leverage/max:5`, `trend 55/20`, `atr 20/2.0`, `pyramiding 4 risk_neutral`, `profit satellite 30%`, `regime btc_filter/adx_min 20`, `volatility/drawdown adaptive`, `funding/OI filter` — tutti usati da `risk.LimitsFromConfig`.
 
