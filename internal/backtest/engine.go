@@ -229,6 +229,9 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 		bar := bars[i]
 
 		// ── funding accrual (8h funding scaled to bar interval) ──
+		// nota: una posizione fillata intrabar nella barra i inizia a pagare funding
+		// dalla barra i+1 (loop funding corre prima del signal block) — bias minore,
+		// una barra di granularità
 		for _, pos := range positions {
 			if bar.FundingRate != 0 {
 				scale := intervalH / 8.0
@@ -744,17 +747,26 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							}
 							totalSlippage += slip * p.Qty
 						}
-						// MAE della barra di entry
+						// MAE/MFE della barra di entry
 						if p.Side == 1 {
 							if mae := (bar.Low - p.EntryPrice) / p.EntryPrice * 100; mae < p.MAE {
 								p.MAE = mae
+							}
+							if mfe := (bar.High - p.EntryPrice) / p.EntryPrice * 100; mfe > p.MFE {
+								p.MFE = mfe
 							}
 						} else {
 							if mae := (p.EntryPrice - bar.High) / p.EntryPrice * 100; mae < p.MAE {
 								p.MAE = mae
 							}
+							if mfe := (p.EntryPrice - bar.Low) / p.EntryPrice * 100; mfe > p.MFE {
+								p.MFE = mfe
+							}
 						}
 						recordExit(p, exitPrice, "stop_same_bar", i)
+						// stop_same_bar è comunque uno stop-out: alimenta la logica
+						// re-entry (ReEntryChecker) — caso d'uso core del whipsaw intrabar
+						lastStop = stopOutState{valid: true, side: p.Side, exitBarIdx: i}
 					}
 					positions = survived
 				}

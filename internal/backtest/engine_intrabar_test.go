@@ -44,7 +44,10 @@ func intrabarEng(cfg *config.Config, bars data.Bars, strat strategy.Strategy) *R
 }
 
 func TestIntrabarFillAtLevel(t *testing.T) {
-	cfg, _ := config.Load("../../configs/default.yaml")
+	cfg, err := config.Load("../../configs/default.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
 	// wiggle 0.4: le barre piatte non toccano il livello 100.5 (High 100.4) —
 	// l'entry avviene SOLO sulla breakout bar (ATR warmup 20 < 30 barre piatte)
 	bars := flatBars(30, 100, 0.4)
@@ -74,7 +77,10 @@ func TestIntrabarFillAtLevel(t *testing.T) {
 }
 
 func TestIntrabarGapOpenFillsAtOpen(t *testing.T) {
-	cfg, _ := config.Load("../../configs/default.yaml")
+	cfg, err := config.Load("../../configs/default.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
 	bars := flatBars(30, 100, 0.4)
 	// gap: open già sopra il livello → fill alla open (101), non al livello
 	bars = append(bars, data.Bar{Time: time.Unix(30*14400, 0), Open: 101, High: 106, Low: 100.8, Close: 105, Volume: 100})
@@ -94,7 +100,10 @@ func TestIntrabarGapOpenFillsAtOpen(t *testing.T) {
 }
 
 func TestIntrabarSameBarStopPessimistic(t *testing.T) {
-	cfg, _ := config.Load("../../configs/default.yaml")
+	cfg, err := config.Load("../../configs/default.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
 	bars := flatBars(30, 100, 0.4)
 	// ATR_prev = 0.8 (wiggle 0.4) → stop = 100.52 − 2×0.8 = 98.92; Low 98 ≤ stop → pessimistico
 	bars = append(bars, data.Bar{Time: time.Unix(30*14400, 0), Open: 100, High: 105, Low: 98, Close: 99, Volume: 100})
@@ -122,7 +131,10 @@ func TestIntrabarSameBarStopPessimistic(t *testing.T) {
 }
 
 func TestIntrabarBothSidesHitNoEntry(t *testing.T) {
-	cfg, _ := config.Load("../../configs/default.yaml")
+	cfg, err := config.Load("../../configs/default.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
 	bars := flatBars(30, 100, 0.4)
 	// huge range bar: tocca sia livello long che short → path inconoscibile → niente entry
 	bars = append(bars, data.Bar{Time: time.Unix(30*14400, 0), Open: 100, High: 110, Low: 90, Close: 100, Volume: 100})
@@ -136,8 +148,83 @@ func TestIntrabarBothSidesHitNoEntry(t *testing.T) {
 	}
 }
 
+// reentryProbeStrat — registra l'ultima StopOutInfo ricevuta da ReEntry (probe)
+type reentryProbeStrat struct {
+	scriptStrategy
+	levels  strategy.IntrabarEntryLevels
+	gotLast strategy.StopOutInfo
+	called  bool
+}
+
+func (s *reentryProbeStrat) IntrabarEntry(_ *strategy.Context, _ int) strategy.IntrabarEntryLevels {
+	return s.levels
+}
+
+func (s *reentryProbeStrat) ReEntry(_ *strategy.Context, _ int, last strategy.StopOutInfo) strategy.Signal {
+	s.called = true
+	s.gotLast = last
+	return strategy.Signal{Side: 0}
+}
+
+func TestIntrabarSameBarStopSetsLastStop(t *testing.T) {
+	cfg, err := config.Load("../../configs/default.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bars := flatBars(30, 100, 0.4)
+	// stop = 100.52 − 2×0.8 = 98.92; Low 98 ≤ stop → same-bar stop
+	bars = append(bars, data.Bar{Time: time.Unix(30*14400, 0), Open: 100, High: 105, Low: 98, Close: 99, Volume: 100})
+	bars = append(bars, flatBars(10, 99, 0.1)...)
+	strat := &reentryProbeStrat{scriptStrategy: scriptStrategy{cfg: cfg}, levels: strategy.IntrabarEntryLevels{
+		Enabled: true, LongLevel: 100.5, LongStopATR: 2, ShortLevel: math.NaN(), ShortStopATR: 2,
+	}}
+	res := intrabarEng(cfg, bars, strat)
+	if len(res.Trades) != 1 || res.Trades[0].ExitReason != "stop_same_bar" {
+		t.Fatalf("precondizione: atteso 1 trade stop_same_bar, avuti %+v", res.Trades)
+	}
+	if !strat.called {
+		t.Fatal("ReEntry mai chiamata dopo stop_same_bar — lastStop non settato")
+	}
+	if strat.gotLast.Side != 1 || strat.gotLast.ExitBarIdx != 30 {
+		t.Errorf("lastStop = %+v, want Side 1 ExitBarIdx 30", strat.gotLast)
+	}
+}
+
+func TestIntrabarShortFillAndSlippage(t *testing.T) {
+	cfg, err := config.Load("../../configs/default.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bars := flatBars(30, 100, 0.4)
+	// breakdown bar: Low attraversa livello short 99.5 → fill al livello − slippage
+	bars = append(bars, data.Bar{Time: time.Unix(30*14400, 0), Open: 100, High: 100.4, Low: 95, Close: 96, Volume: 100})
+	bars = append(bars, flatBars(10, 96, 0.3)...)
+	strat := &intrabarStrat{scriptStrategy{cfg: cfg}, strategy.IntrabarEntryLevels{
+		Enabled: true, LongLevel: math.NaN(), LongStopATR: 2, ShortLevel: 99.5, ShortStopATR: 2,
+	}}
+	res := intrabarEng(cfg, bars, strat)
+	// stop short = fill + 2×0.8 = 99.496 + 1.6 = 101.1; High della breakdown bar 100.4 < stop → sopravvive
+	if len(res.Trades) != 1 {
+		t.Fatalf("atteso 1 trade (eod), avuti %d", len(res.Trades))
+	}
+	tr := res.Trades[0]
+	if tr.Side != -1 {
+		t.Errorf("Side = %d, want -1", tr.Side)
+	}
+	wantFill := 99.5 * (1 - 2.0/10000.0) // livello − 2bps slippage per short
+	if math.Abs(tr.EntryPrice-wantFill) > 1e-6 {
+		t.Errorf("EntryPrice = %v, want %v (short: fill al livello − slip)", tr.EntryPrice, wantFill)
+	}
+	if tr.PnLNet <= 0 {
+		t.Errorf("short profittevole atteso (entry 99.5, eod 96), avuto %.2f", tr.PnLNet)
+	}
+}
+
 func TestIntrabarDisabledByDefault(t *testing.T) {
-	cfg, _ := config.Load("../../configs/default.yaml")
+	cfg, err := config.Load("../../configs/default.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
 	bars := flatBars(30, 100, 0.5)
 	bars = append(bars, data.Bar{Time: time.Unix(30*14400, 0), Open: 100, High: 105, Low: 99.9, Close: 104, Volume: 100})
 	strat := &intrabarStrat{scriptStrategy{cfg: cfg}, strategy.IntrabarEntryLevels{
