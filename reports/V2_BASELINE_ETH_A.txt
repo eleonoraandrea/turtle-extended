@@ -1,0 +1,4 @@
+loaded 14627 bars from data/raw/ETHUSDT_4h.csv
+ETHUSDT A: Return 188.02% CAGR 17.18% Sharpe 0.71 Sortino 0.51 MaxDD -28.40% PF 1.56 Trades 600 Fee $2250.77 Funding $1981.66
+report reports/V2_BASELINE_ETH_A.html
+next: atps walk-forward --symbol ETHUSDT --variant A --csv data/raw/ETHUSDT_4h.csv

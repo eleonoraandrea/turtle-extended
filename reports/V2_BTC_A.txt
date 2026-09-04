@@ -1,0 +1,4 @@
+loaded 14627 bars from data/raw/BTCUSDT_4h.csv
+BTCUSDT A: Return 616.30% CAGR 34.31% Sharpe 1.50 Sortino 1.58 MaxDD -17.01% PF 2.14 Trades 416 Fee $3436.68 Funding $4524.71
+report reports/V2_BTC_A.html
+next: atps walk-forward --symbol BTCUSDT --variant A --csv data/raw/BTCUSDT_4h.csv

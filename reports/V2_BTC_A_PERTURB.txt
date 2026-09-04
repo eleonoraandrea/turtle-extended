@@ -1,0 +1,9 @@
+Baseline: 616.3% R0.68 Sharpe 1.50 PF 2.14 SkewR 4.83
+  donchian_entry: 616.3% (Δ0.0%) Sharpe 1.50 PF 2.14 R0.68 Skew 4.83
+  donchian_entry -20%: 616.3% (Δ0.0%) Sharpe 1.50 PF 2.14 R0.68 Skew 4.83
+  atr_stop +20%: 426.0% (Δ-190.3%) Sharpe 1.43 PF 2.22 R0.59 Skew 4.64
+  atr_stop -20%: 519.8% (Δ-96.5%) Sharpe 1.28 PF 1.76 R0.69 Skew 5.46
+  risk base +0.5%: 616.3% (Δ0.0%) Sharpe 1.50 PF 2.14 R0.68 Skew 4.83
+  risk base -0.5%: 418.4% (Δ-197.9%) Sharpe 1.55 PF 2.30 R0.68 Skew 4.83
+Robustness: range 418.4% to 616.3% (Δ197.9%), all 6 perturbs PROFITTEVOLI
+saved reports/V2_BTC_A_PERTURB.json
