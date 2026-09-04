@@ -617,6 +617,15 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					sameSideUnits = earliest.Units
 					// If satellite split active, the total Units is ~2× logical, adjust maxUnits logic by using earliest only
 				}
+				if eng.PyramidingMode == "separate" {
+					// unità logiche = core + gambe (satellite escluso: non partecipa al pyramid)
+					sameSideUnits = 0
+					for _, p := range positions {
+						if p.Side == sig.Side && !p.IsSatellite {
+							sameSideUnits++
+						}
+					}
+				}
 				hasSameSide := earliest != nil
 				if hasSameSide {
 					// ── pyramiding ──
@@ -655,8 +664,20 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							equity -= fee
 							totalFee += fee
 							totalSlippage += slipCost
-							// risk_neutral: total risk stays near base, so don't sum full pyramid risk
-							if lim.PyramidingRiskNeutral {
+							if eng.PyramidingMode == "separate" {
+								// gamba indipendente: stop proprio + exit wide Don55
+								leg := &Position{
+									Symbol: eng.Symbol, Side: sig.Side, Qty: dec.Qty,
+									EntryPrice: fillPrice, EntryTime: fillTime, EntryATR: atr,
+									StopPrice: stopPx, Units: 1, EntryBarIdx: i,
+									RiskPct: dec.RiskPct, Leverage: dec.Leverage,
+									Notional: dec.Notional, RiskAmount: dec.RiskAmount,
+									SizingLog: logFactors(dec) + " | pyramid separate (wide Don55)",
+									EntryFee:  fee, EntryReason: sig.Reason + " | pyramid separate",
+									IsSatellite: false, DonExitLen: 55,
+								}
+								positions = append(positions, leg)
+							} else if lim.PyramidingRiskNeutral {
 								// keep total heat constant: pyramid is funded by trailing existing stop to breakeven
 								earliest.EntryPrice = (earliest.EntryPrice*earliest.Qty + fillPrice*dec.Qty) / (earliest.Qty + dec.Qty)
 								earliest.Qty += dec.Qty
