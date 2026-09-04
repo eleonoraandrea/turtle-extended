@@ -635,7 +635,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 							res.NotionalCapHits++
 						}
 						// risk_neutral: pyramid does not increase total risk (stop of existing moved to breakeven)
-						if lim.PyramidingRiskNeutral {
+						if lim.PyramidingRiskNeutral && eng.PyramidingMode != "separate" {
 							// keep total risk near base: pyramid risk is small, not added to heat
 							dec.RiskPct = dec.RiskPct * 0.5 // pyramid at half risk when risk_neutral
 							dec.RiskAmount = dec.RiskPct / 100 * ms.Equity

@@ -122,6 +122,40 @@ func TestSeparatePyramidWideExitSurvivesCoreExit(t *testing.T) {
 	}
 }
 
+func TestSeparateIgnoresRiskNeutralHalving(t *testing.T) {
+	runWith := func(neutral bool) *Result {
+		cfg := sepCfg(t)
+		cfg.Pyramiding.RiskNeutral = neutral
+		bars := flatBars(40, 100, 0.5)
+		for i := 24; i < 40; i++ {
+			bars[i] = data.Bar{Time: time.Unix(int64(i)*14400, 0), Open: 102, High: 103.5, Low: 101.5, Close: 103, Volume: 100}
+		}
+		signals := map[int]strategy.Signal{
+			25: {Side: 1, Strength: 1, StopPrice: 98, Reason: "script core"},
+			28: {Side: 1, Strength: 1, StopPrice: 97, Reason: "script add"},
+		}
+		strat := &sepStrat{scriptStrategy{cfg: cfg, signals: signals}}
+		return Run(bars, strat, cfg, sepEng())
+	}
+	a := runWith(true)
+	b := runWith(false)
+	legQty := func(res *Result) float64 {
+		for i := range res.Trades {
+			if res.Trades[i].EntryReason == "script add | pyramid separate" {
+				return res.Trades[i].Qty
+			}
+		}
+		return -1
+	}
+	qa, qb := legQty(a), legQty(b)
+	if qa < 0 || qb < 0 {
+		t.Fatalf("gamba separate non trovata (neutral qa=%.4f qb=%.4f)", qa, qb)
+	}
+	if qa != qb {
+		t.Errorf("separate+neutral leg qty %.4f != separate+non-neutral %.4f — neutral deve essere ignorato", qa, qb)
+	}
+}
+
 func TestSeparatePyramidRespectsMaxUnits(t *testing.T) {
 	cfg := sepCfg(t)
 	cfg.Portfolio.MaxOpenRisk = 0.10
