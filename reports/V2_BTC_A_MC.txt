@@ -1,2 +1,4 @@
 MC BTCUSDT A runs 2000 median 606.3% p5 214.6% p95 1142.2% probProfit 100.0%
 saved reports/V2_BTC_A_MC.json
+
+[correzione] probProfit 100.0% sopra è arrotondamento %.1f di 99.95% (1 run su 2000 in perdita) — vedi V2_BTC_A_MC.json

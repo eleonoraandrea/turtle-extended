@@ -5,7 +5,7 @@
 general:
   initial_capital: 10000.0
   interval: "4h"              # 1h, 4h, 1d
-  symbols: ["BTCUSDT"]
+  symbols: ["BTCUSDT"]        # BTC-focused; ETH/SOL validati con questa config (V2_VALIDATION.md) — compare.symbols resta 3 per il confronto
   orderly_symbols: ["PERP_BTC_USDC"]
   start_time: "2020-01-01"
   end_time: ""
@@ -19,7 +19,7 @@ costs:
 
 # ── RISK ENGINE — sizing per rischio max 2%, leva DINAMICA, base/min/max ──
 # qty = (equity × risk%) / |entry − stop|  — posizione SCALA con equity (compounding)
-# risk% adattivo: base 1.0% → min 0.25% (high vol / DD) → max 2.0% (low vol / trend forte)
+# risk% adattivo v2: base 2.0% (= max, era 1.0%) → min 0.25% (high vol / DD); cap kelly 2%
 risk:
   base: 0.02                  # 2.0% base (v2 optimizer: r0.020) — era 1.0%
   min: 0.0025                 # 0.25% min
@@ -106,7 +106,7 @@ variant_a: # ATPS v2 — vincitore optimizer grid completa 2592 (reports/V2_OPTI
   sma_filter: 200
   use_ema_filter: false
   trail_mode: donchian        # v2: uscita Donchian breve (niente chandelier/trailing ATR)
-  don_exit: 10                # v2: Donchian exit 10 barre
+  don_exit: 10                # v2: Donchian exit 10 barre — vince su trend.donchian_exit (EngineConfigFrom: per-variante > globale)
   entry_mode: close           # v2: entry a close barra (niente intrabar)
   reentry:                    # v2: re-entry post stop-out OFF
     enabled: false

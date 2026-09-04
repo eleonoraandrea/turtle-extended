@@ -1,16 +1,17 @@
 # ATPS v2 — Report validazione (2026-09-04)
 
 Spec: docs/superpowers/specs/2026-09-04-atps-improve-cagr-dd15-design.md
-Optimizer: reports/V2_OPTIMIZE_RUN.txt — grid COMPLETA 2592 combo (runtime ~45s effettivi)
+Optimizer: reports/V2_OPTIMIZE_RUN.txt — grid COMPLETA 2592 combo (runtime effettivo ~45s (l'ETA '≈173 min' stampato dal tool era una stima pessima per-run))
 
 ## Combo vincitrice (optimizer v2, BTC A)
-atr1.8 donchian don10 pyr(off) sat0.4 r0.02 entry:close reentry:off dd(10/25)
+atr1.8 trail:donchian don_exit:10 pyramiding:off satellite:0.4 risk:0.02 entry:close reentry:off dd(10/25)
 
 ## Nota metodologica — reinterpretazione gate test (APPROVATA dall'utente)
 Il gate letterale "degrado CAGR train→test < 1/3" fallisce per OGNI combo incluso il
 baseline (btc_opt: 41.1%→8.3% = -80%) per cambio di regime 2020-24 (train, mega-bull)
 vs 2024-26 (test). Sostituito con confronto like-for-like sullo stesso holdout:
 v2 test CAGR ≥ baseline test CAGR AND v2 test Calmar ≥ baseline test Calmar.
+Evidenza holdout baseline: reports/V2_BASELINE_HOLDOUT_BTC.txt (test CAGR 8.31, Calmar 0.36).
 
 ## Gate protocollo
 | Gate | Criterio | Valore | Esito |
@@ -21,7 +22,7 @@ v2 test CAGR ≥ baseline test CAGR AND v2 test Calmar ≥ baseline test Calmar.
 | Test holdout (reinterpretato) | v2 teCAGR ≥ 8.31 AND teCal ≥ 0.36 | 12.4 vs 8.31, 0.73 vs 0.36 | PASS |
 | Walk-forward 8f | mediana Sharpe > 0 | 1.70 (avg test 2.10, avg train 1.36, decay 1.54, OOS 114.9%) | PASS |
 | Perturbazione ±20% | degrado CAGR < 30% | 4.1% mediano; worst-case 18.5% (risk -0.5%) | PASS |
-| Monte Carlo 2000 | informativo: p5 214.6% p50 606.3% p95 1142.2% | probProfit 99.95%, median Sharpe 2.83 | INFO |
+| Monte Carlo 2000 | informativo: p5 214.6% p50 606.3% p95 1142.2% | probProfit 99.95% (txt arrotondato, json 99.95), median Sharpe 2.83 | INFO |
 | ETH conferma | CAGR ≥ 13.74% (0.8× 17.18) | 20.66% | PASS |
 | SOL conferma | CAGR ≥ 3.42% (0.8× 4.27) | 6.01% | PASS |
 
