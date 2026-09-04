@@ -1,0 +1,7 @@
+loaded 14627 bars from data/raw/BTCUSDT_4h.csv
+BTCUSDT A: Return 498.95% CAGR 30.76% Sharpe 0.99 Sortino 0.88 MaxDD -28.66% PF 1.51 Trades 617 Fee $5133.31 Funding $8377.12
+scaling ceiling: 2.00% (maxRisk lega)
+warn: pyramiding.mode=separate ignora risk_neutral (vale solo per merged)
+warn: pyramiding.mode=separate disabilita satellite (incompatibile: le gambe usano già exit wide)
+report reports/V3_SEP_BTC_A.html
+next: atps walk-forward --symbol BTCUSDT --variant A --csv data/raw/BTCUSDT_4h.csv

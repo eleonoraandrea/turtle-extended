@@ -29,7 +29,26 @@ DECISIONE A: BOCCIATA — resta atps_v2, motivo: gate holdout fallito (test-wind
 
 ## Decisione B — pyramid separate
 Baseline Task 4: configs/atps_v2.yaml (Decisione A BOCCIATA).
-(da compilare nel Task 4)
+Challenger: pyramiding enabled/mode=separate/max_additions=6/risk_neutral=true (ignorato, warning atteso) — heat/corr/kelly/max invariati da atps_v2, satellite enabled:true nel file ma forzato OFF dal motore con warning. Diff esatto verificato vs atps_v2 (solo sezione pyramiding).
+| Gate | Criterio | Valore | Esito |
+|---|---|---|---|
+| Holdout | sep teCAGR ≥ 12.4 AND sep teCal ≥ 0.73 | teCAGR 2.11 vs 12.4, teCal 0.08 vs 0.73 (test DD -27.51 vs v2 -16.9; train 46.40/-22.39/Cal 2.07) | FAIL |
+| DD full | ≥ -22% | -28.66% (full 30.76/-28.66/Sharpe 0.99/PF 1.51/617tr vs v2 34.31/-17.01/1.50/2.14/416tr) | FAIL (osservato, secondario) |
+| Warning motore | risk_neutral ignorato + satellite OFF forzato | entrambi i warning presenti in stdout (reports/V3_SEP_BTC_A.txt righe 4-5) | PASS |
+| WF 8f | mediana Sharpe > 0 | non eseguito (stop da protocollo su holdout FAIL) | SKIPPED |
+| Perturb | degrado < 30% | non eseguito (stop da protocollo su holdout FAIL) | SKIPPED |
+| ETH | CAGR ≥ 16.53% | non eseguito (stop da protocollo su holdout FAIL) | SKIPPED |
+| SOL | CAGR ≥ 4.81% | non eseguito (stop da protocollo su holdout FAIL) | SKIPPED |
+
+DECISIONE B: BOCCIATA — resta pyramiding OFF (atps_v2 invariato, atps_v3 NON creato), motivo: gate holdout fallito (test-window 2024-26: teCAGR 2.11% << 12.4 v2 e teCal 0.08 << 0.73 v2, test DD -27.51% peggiore di v2 -16.9%). Il separate migliora il train (46.40 vs 47.1 v2-like) ma collassa out-of-sample: gambe full-size che competono per lo stesso budget amplificano il chop del regime test. Conferma secondaria: full DD -28.66% viola il budget -22% (vs -17.01 v2) e Sharpe dimezzato (0.99 vs 1.50) con 617 trade (+48% costi). Config candidata ELIMINATA (configs/atps_v3_sep.yaml rimossa, non committata). Evidenza: reports/V3_SEP_HOLDOUT_BTC.txt vs reports/V2_OPTIMIZE_RUN.txt top row su atps_v2 (train 47.1/DD -13.0/test 12.4/DD -16.9/Cal 0.73); full: reports/V3_SEP_BTC_A.txt.
+
+## Numeri finali B
+| Symbol | Config | CAGR | MaxDD | Sharpe | PF | Trades |
+|---|---|---|---|---|---|---|
+| BTC | atps_v2 | 34.31 | -17.01 | 1.50 | 2.14 | 416 |
+| BTC | sep-cand (full) | 30.76 | -28.66 | 0.99 | 1.51 | 617 |
+| BTC | sep-cand (train) | 46.40 | -22.39 | 1.31 | — | 390 |
+| BTC | sep-cand (test) | 2.11 | -27.51 | 0.10 | — | 203 |
 
 ## Appendice — configs/atps_v3.yaml eliminata (rigettata, non committata)
 
