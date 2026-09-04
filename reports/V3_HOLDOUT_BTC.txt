@@ -1,0 +1,3 @@
+configs/atps_v3.yaml data/raw/BTCUSDT_4h.csv A full  → CAGR  39.49% DD  -19.49% Sharpe 1.28 Calmar 2.03 trades 416
+configs/atps_v3.yaml data/raw/BTCUSDT_4h.csv A train → CAGR  58.40% DD  -19.49% Sharpe 1.62 Calmar 3.00 trades 282
+configs/atps_v3.yaml data/raw/BTCUSDT_4h.csv A test  → CAGR   7.16% DD  -23.49% Sharpe 0.33 Calmar 0.30 trades 124

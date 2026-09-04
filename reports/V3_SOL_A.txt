@@ -1,0 +1,4 @@
+loaded 13084 bars from data/raw/SOLUSDT_4h.csv
+SOLUSDT A: Return 39.42% CAGR 5.72% Sharpe 0.38 Sortino 0.32 MaxDD -23.33% PF 1.19 Trades 452 Fee $628.94 Funding $597.93
+report reports/V3_SOL_A.html
+next: atps walk-forward --symbol SOLUSDT --variant A --csv data/raw/SOLUSDT_4h.csv
