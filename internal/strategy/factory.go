@@ -12,6 +12,8 @@ func New(variant string, cfg *config.Config) Strategy {
 		return NewC(cfg)
 	case "D", "d":
 		return NewD(cfg)
+	case "M", "m":
+		return NewM(cfg)
 	default:
 		return NewD(cfg)
 	}

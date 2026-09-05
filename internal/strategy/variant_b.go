@@ -12,7 +12,7 @@ type VariantB struct{ cfg *config.Config }
 func NewB(cfg *config.Config) *VariantB             { return &VariantB{cfg: cfg} }
 func (s *VariantB) Name() string                    { return s.cfg.VariantB.Name }
 func (s *VariantB) Variant() string                 { return "B" }
-func (s *VariantB) Warmup() int                     { return 200 }
+func (s *VariantB) Warmup() int                     { return VariantWarmup(s.cfg, "B") }
 func (s *VariantB) Prepare(bars data.Bars) *Context { return PrepareCommon(bars, s.cfg, "B") }
 
 func (s *VariantB) Next(ctx *Context, i int) Signal {

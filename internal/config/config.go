@@ -28,6 +28,7 @@ type Config struct {
 	VariantB     VariantB        `yaml:"variant_b"`
 	VariantC     VariantC        `yaml:"variant_c"`
 	VariantD     VariantD        `yaml:"variant_d"`
+	VariantM     VariantM        `yaml:"variant_m"`
 	Compare      Compare         `yaml:"compare"`
 	WalkForward  WalkForward     `yaml:"walk_forward"`
 	MonteCarlo   MonteCarlo      `yaml:"monte_carlo"`
@@ -133,12 +134,14 @@ type Backtest struct {
 // EngineCfg — override engine per-variante (yaml inline sotto variant_a/b/c/d).
 // Campi zero → fallback alla sezione globale backtest:/trend: in EngineConfigFrom.
 type EngineCfg struct {
-	TrailMode       string  `yaml:"trail_mode"`           // donchian|chandelier (default donchian)
-	TrailATRMult    float64 `yaml:"trail_atr_mult"`       // moltiplicatore chandelier
-	DonExit         int     `yaml:"don_exit"`             // lunghezza Donchian exit (default trend.donchian_exit)
-	EntryMode       string  `yaml:"entry_mode"`           // close|intrabar (default close)
-	PyramidingUnits int     `yaml:"pyramiding_max_units"` // override unità pyramiding
-	PyramidStepATR  float64 `yaml:"pyramid_step_atr"`
+	TrailMode          string  `yaml:"trail_mode"`           // donchian|chandelier (default donchian)
+	TrailATRMult       float64 `yaml:"trail_atr_mult"`       // moltiplicatore chandelier
+	DonExit            int     `yaml:"don_exit"`             // lunghezza Donchian exit (default trend.donchian_exit)
+	SatelliteExitLen   int     `yaml:"satellite_exit_len"`   // canale exit satellite/gambe wide (default 55)
+	EntryMode          string  `yaml:"entry_mode"`           // close|intrabar (default close)
+	ExitMode           string  `yaml:"exit_mode"`            // "" | trend (default) | reversion (MR: mean-touch/bounce)
+	PyramidingUnits    int     `yaml:"pyramiding_max_units"` // override unità pyramiding
+	PyramidStepATR     float64 `yaml:"pyramid_step_atr"`
 }
 
 // ReEntryCfg — re-entry dopo stop-out se il trend regge e prezzo fa nuovo high/low N barre
@@ -222,6 +225,22 @@ type VariantD struct {
 	AdaptiveChannel   bool       `yaml:"adaptive_channel"`
 	Engine            EngineCfg  `yaml:",inline"`
 	ReEntry           ReEntryCfg `yaml:"reentry"`
+}
+type VariantM struct {
+	Name        string    `yaml:"name"`
+	MRPeriod    int       `yaml:"mr_period"`     // SMA di riferimento (la "mean")
+	MRDevATR    float64   `yaml:"mr_dev_atr"`    // deviazione entry in ATR sotto/sopra la mean
+	TrendSMA    int       `yaml:"mr_trend_sma"`  // filtro regime: long solo sopra, short solo sotto
+	RSIPeriod   int       `yaml:"rsi_period"`
+	RSIBuy      float64   `yaml:"rsi_buy"`       // 0 = filtro RSI OFF
+	RSISell     float64   `yaml:"rsi_sell"`      // 0 = OFF
+	Confirm     bool      `yaml:"mr_confirm"`    // entry solo su prima barra di rimbalzo (close > prev close)
+	AllowShorts bool      `yaml:"mr_shorts"`
+	ATRPeriod   int       `yaml:"atr_period"`
+	ATRStopMult float64   `yaml:"atr_stop_mult"`
+	RiskPct     float64   `yaml:"risk_pct"`
+	Engine      EngineCfg `yaml:",inline"`
+	ReEntry     ReEntryCfg `yaml:"reentry"`
 }
 type Compare struct {
 	Variants []string `yaml:"variants"`

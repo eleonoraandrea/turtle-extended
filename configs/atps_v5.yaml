@@ -1,11 +1,11 @@
-# ATPS — Adaptive Turtle Perpetual System (Go)
-# Binance dati, Orderly esecuzione (isolata)
-# Spec per massimizzare: Expectancy × Positive Skew × Compounding
-# 55-65 losing/small, 20-30 small winners, 5-10 large +5R/+10R/+20R+ con DD controllato
+# ATPS — Adaptive Turtle Perpetual System (Go) — v2 VALIDATA (2026-09-04)
+# Vinci optimizer v2 grid completa 2592 (train 2020-01→2024-09, test 2024-09→2026-09)
+# Combo: atr1.8 donchian(don0.0) don10 pyr(off) sat0.40 r0.020 entry:close reentry:off dd(10/25)
+# Validazione: reports/V4_VALIDATION.md (portfolio PROMOSSO) — baseline v2: report rimosso su richiesta 2026-09-04, in git history prima del commit 0729664
 general:
   initial_capital: 10000.0
   interval: "4h"              # 1h, 4h, 1d
-  symbols: ["BTCUSDT","ETHUSDT","SOLUSDT"]
+  symbols: ["BTCUSDT","ETHUSDT","SOLUSDT"]        # BTC-focused; ETH/SOL validati con questa config (report rimosso su richiesta 2026-09-04 — in git history prima del commit 0729664) — compare.symbols resta 3 per il confronto
   orderly_symbols: ["PERP_BTC_USDC","PERP_ETH_USDC","PERP_SOL_USDC"]
   start_time: "2020-01-01"
   end_time: ""
@@ -19,11 +19,11 @@ costs:
 
 # ── RISK ENGINE — sizing per rischio max 2%, leva DINAMICA, base/min/max ──
 # qty = (equity × risk%) / |entry − stop|  — posizione SCALA con equity (compounding)
-# risk% adattivo: base 1.0% → min 0.25% (high vol / DD) → max 2.0% (low vol / trend forte)
+# risk% adattivo v2: base 2.0% (= max, era 1.0%) → min 0.25% (high vol / DD); cap kelly 2%
 risk:
-  base: 0.01                  # 1.0% base (user spec)
+  base: 0.018                 # 2.0% base (v2 optimizer: r0.020) — era 1.0%
   min: 0.0025                 # 0.25% min
-  max: 0.02                   # 2.0% max per posizione (user requirement)
+  max: 0.018                  # v5: 1.8% max per posizione
   max_risk_per_trade_pct: 2.0 # alias legacy
   max_portfolio_heat_pct: 3.0 # alias legacy = portfolio.max_open_risk 3%
   max_leverage: 5.0           # HARD cap (user spec leverage.max 5)
@@ -59,7 +59,7 @@ atr:
 
 # ── PYRAMIDING (user spec) ──
 pyramiding:
-  enabled: true
+  enabled: false              # v2 optimizer: OFF (max_additions ignorato quando disabilitato)
   max_additions: 4
   risk_neutral: true          # ogni add non aumenta rischio totale oltre base
 
@@ -69,7 +69,7 @@ profit:
   fixed_tp: false
   satellite:
     enabled: true
-    allocation: 0.30          # 30% satellite per large winners +5R/+10R
+    allocation: 0.40          # 40% satellite per large winners +5R/+10R (v2 optimizer: sat0.4)
 
 # ── REGIME (user spec) ──
 regime:
@@ -95,16 +95,27 @@ backtest:
   commission_model: "bps"
 
 # Varianti — BIG IMPROVE: stop 1.8× tight, filtri meno restrittivi, volTarget 50%
-variant_a: # Turtle classico S1 — stop tight per leva più alta a pari 2% risk
-  name: "Variant A — Classic Turtle (Improved 55/20)"
+variant_a: # ATPS v2 — vincitore optimizer grid completa 2592 (report rimosso su richiesta 2026-09-04 — in git history prima del commit 0729664)
+  name: "Variant A — ATPS v4 portfolio BTC+ETH+SOL (risk 2% validato, vedi reports/V4_VALIDATION.md)"
   donchian_entry: 55          # user spec trend 55
   donchian_exit: 20
   donchian_alt: 20
   atr_period: 20
-  atr_stop_mult: 1.8
+  atr_stop_mult: 1.6
   risk_pct: 2.0
-  sma_filter: 200
+  sma_filter: 300
   use_ema_filter: false
+  trail_mode: donchian        # v3: uscita Donchian breve
+  don_exit: 10                # v3: Donchian exit 10 barre
+  engine:
+    trail_mode: donchian
+    don_exit: 10
+    satellite_exit_len: 55
+  entry_mode: close           # v2: entry a close barra (niente intrabar)
+  reentry:                    # v2: re-entry post stop-out OFF
+    enabled: false
+    lookback: 10
+    within_bars: 20
 
 variant_b: # + regime filter
   name: "Variant B — Regime Filter (Improved)"
@@ -163,29 +174,6 @@ variant_d: # full adaptive — massimizza Expectancy×Skew×Compounding
   trail_mode: "chandelier"
   use_crash_brake: true
   adaptive_channel: true
-
-variant_m: # H1 mean reversion — compra i dip in uptrend / shorta i rip in downtrend
-  name: "Variant M — H1 Mean Reversion (dip-buy / rip-short)"
-  mr_period: 24               # SMA mean (1h → 24 barre = 1 giorno)
-  mr_dev_atr: 2.5             # deviazione entry in ATR
-  mr_trend_sma: 840           # filtro regime (35 giorni su 1h)
-  rsi_period: 14
-  rsi_buy: 30                 # 0 = filtro RSI off
-  rsi_sell: 70
-  mr_confirm: true            # entry solo su prima barra di rimbalzo
-  mr_shorts: true
-  atr_period: 14
-  atr_stop_mult: 2.0
-  risk_pct: 1.0
-  engine:
-    trail_mode: donchian
-    don_exit: 12              # canale bounce exit
-    entry_mode: close
-    exit_mode: reversion      # mean-touch / bounce (stop fisso)
-  reentry:
-    enabled: false
-    lookback: 10
-    within_bars: 20
 
 # Backtest compare
 compare:

@@ -375,3 +375,39 @@ func ChandelierShort(low []float64, atr []float64, period int, mult float64) []f
 	}
 	return out
 }
+
+// RSI — Wilder smoothing (RMA di gain/loss). NaN in warmup.
+func RSI(close []float64, period int) []float64 {
+	n := len(close)
+	out := make([]float64, n)
+	for i := range out {
+		out[i] = math.NaN()
+	}
+	if period <= 0 || n < period+1 {
+		return out
+	}
+	gains := make([]float64, n)
+	losses := make([]float64, n)
+	for i := 1; i < n; i++ {
+		d := close[i] - close[i-1]
+		if d > 0 {
+			gains[i] = d
+		} else {
+			losses[i] = -d
+		}
+	}
+	ag := RMA(gains, period)
+	al := RMA(losses, period)
+	for i := 0; i < n; i++ {
+		if math.IsNaN(ag[i]) || math.IsNaN(al[i]) {
+			continue
+		}
+		if al[i] == 0 {
+			out[i] = 100
+			continue
+		}
+		rs := ag[i] / al[i]
+		out[i] = 100 - 100/(1+rs)
+	}
+	return out
+}

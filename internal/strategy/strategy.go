@@ -40,6 +40,8 @@ type Context struct {
 	Don55L    []float64
 	Don100H   []float64
 	Don100L   []float64
+	RSI        []float64 // RSI (M: rsi_period, default 14) — mean reversion
+	SMAShort   []float64 // SMA breve (M: mr_period) — media di riferimento reversion
 	VolRegime []float64
 	FundingZ  []float64
 	VolumeSMA []float64
@@ -81,6 +83,69 @@ type StopOutInfo struct {
 
 type ReEntryChecker interface {
 	ReEntry(ctx *Context, i int, last StopOutInfo) Signal
+}
+
+// variantChannels — risolve le lunghezze dei canali/MA per variante dalla config.
+// Backward-compatible: valore 0/assente → default storici (20/55/100, SMA 200),
+// così i risultati 4h esistenti sono immutati. Su 1h si configurano periodi
+// calendar-equivalenti (es. entry 220 = 55×4h).
+func variantChannels(cfg *config.Config, variant string) (fastLen, slowLen, midLen, smaLen int) {
+	fastLen, slowLen, midLen, smaLen = 20, 55, 100, 200
+	switch variant {
+	case "A":
+		if cfg.VariantA.DonchianAlt > 0 {
+			fastLen = cfg.VariantA.DonchianAlt
+		}
+		if cfg.VariantA.DonchianEntry > 0 {
+			slowLen = cfg.VariantA.DonchianEntry
+		}
+		if cfg.VariantA.SMAFilter > 0 {
+			smaLen = cfg.VariantA.SMAFilter
+		}
+	case "B":
+		if cfg.VariantB.DonchianAlt > 0 {
+			fastLen = cfg.VariantB.DonchianAlt
+		}
+		if cfg.VariantB.DonchianEntry > 0 {
+			slowLen = cfg.VariantB.DonchianEntry
+		}
+	case "D":
+		if cfg.VariantD.DonchianFast > 0 {
+			fastLen = cfg.VariantD.DonchianFast
+		}
+		if cfg.VariantD.DonchianMid > 0 {
+			slowLen = cfg.VariantD.DonchianMid
+		}
+		if cfg.VariantD.DonchianSlow > 0 {
+			midLen = cfg.VariantD.DonchianSlow
+		}
+	case "M":
+		// M non usa i canali donchian per l'entry: il filtro trend usa lo slot SMA
+		if cfg.VariantM.TrendSMA > 0 {
+			smaLen = cfg.VariantM.TrendSMA
+		}
+	}
+	return
+}
+
+// VariantWarmup — warmup dinamico: copre il periodo più lungo tra i canali e il
+// filtro MA della variante (default storici → 200, identico al comportamento fisso).
+func VariantWarmup(cfg *config.Config, variant string) int {
+	fastLen, slowLen, midLen, smaLen := variantChannels(cfg, variant)
+	w := fastLen
+	if slowLen > w {
+		w = slowLen
+	}
+	if midLen > w {
+		w = midLen
+	}
+	if smaLen > w {
+		w = smaLen
+	}
+	if w < 200 {
+		w = 200
+	}
+	return w
 }
 
 // Helpers to convert bars to slices
@@ -168,13 +233,28 @@ func PrepareCommon(bars data.Bars, cfg *config.Config, variant string) *Context 
 	adx, _plus, _minus := indicators.ADX(high, low, closeP, adxPeriod)
 	ema50 := indicators.EMA(closeP, emaFast)
 	ema200 := indicators.EMA(closeP, emaSlow)
-	sma200 := indicators.SMA(closeP, 200)
-	don20h := indicators.DonchianHigh(high, 20)
-	don20l := indicators.DonchianLow(low, 20)
-	don55h := indicators.DonchianHigh(high, 55)
-	don55l := indicators.DonchianLow(low, 55)
-	don100h := indicators.DonchianHigh(high, 100)
-	don100l := indicators.DonchianLow(low, 100)
+	// canali configurabili per variante (0 → default storici) — chiave per H1:
+	// su 1h i canali vengono scalati in barre per mantenere la stessa finestra
+	// calendar del 4h (es. entry 55×4h → 220×1h)
+	fastLen, slowLen, midLen, smaLen := variantChannels(cfg, variant)
+	sma200 := indicators.SMA(closeP, smaLen)
+	don20h := indicators.DonchianHigh(high, fastLen)
+	don20l := indicators.DonchianLow(low, fastLen)
+	don55h := indicators.DonchianHigh(high, slowLen)
+	don55l := indicators.DonchianLow(low, slowLen)
+	don100h := indicators.DonchianHigh(high, midLen)
+	don100l := indicators.DonchianLow(low, midLen)
+	// mean-reversion extras: RSI + SMA breve (M: mr_period, altri: 20)
+	rsiPeriod := 14
+	if variant == "M" && cfg.VariantM.RSIPeriod > 0 {
+		rsiPeriod = cfg.VariantM.RSIPeriod
+	}
+	rsi := indicators.RSI(closeP, rsiPeriod)
+	smaShortLen := 20
+	if variant == "M" && cfg.VariantM.MRPeriod > 0 {
+		smaShortLen = cfg.VariantM.MRPeriod
+	}
+	smaShort := indicators.SMA(closeP, smaShortLen)
 	volRegime := indicators.VolRegime(atr, volLookback)
 	fundingZ := indicators.ZScore(funding, fundLookback)
 	volSMA := indicators.SMA(vol, volSMALen)
@@ -186,6 +266,7 @@ func PrepareCommon(bars data.Bars, cfg *config.Config, variant string) *Context 
 		EMA50: ema50, EMA200: ema200, SMA200: sma200,
 		Don20H: don20h, Don20L: don20l, Don55H: don55h, Don55L: don55l, Don100H: don100h, Don100L: don100l,
 		VolRegime: volRegime, FundingZ: fundingZ, VolumeSMA: volSMA, OI: oi, Funding: funding,
+		RSI: rsi, SMAShort: smaShort,
 		ChandelierLong: chLong, ChandelierShort: chShort,
 	}
 }

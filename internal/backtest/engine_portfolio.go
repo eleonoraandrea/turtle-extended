@@ -91,6 +91,11 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 	if exitLen == 0 {
 		exitLen = 20
 	}
+	// normalizza canale satellite (0 → 55 default, identico al motore singolo)
+	if eng.SatelliteExitLen <= 0 {
+		eng.SatelliteExitLen = 55
+	}
+	satExitLen := eng.SatelliteExitLen
 
 	// stato per-simbolo (Prepare + canali donchian)
 	states := make([]*symState, 0, len(symbols))
@@ -106,7 +111,7 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 			symbol: s, bars: bars, strat: strats[s],
 			ctx: strats[s].Prepare(bars), brakeUntil: -1,
 			donExitH: indicators.DonchianHigh(high, exitLen), donExitL: indicators.DonchianLow(low, exitLen),
-			donExitH55: indicators.DonchianHigh(high, 55), donExitL55: indicators.DonchianLow(low, 55),
+			donExitH55: indicators.DonchianHigh(high, satExitLen), donExitL55: indicators.DonchianLow(low, satExitLen),
 		}
 		states = append(states, st)
 	}
@@ -241,7 +246,7 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 				exitPrice := bar.Close
 				var donL, donH float64
 				if i >= 1 {
-					if pos.DonExitLen == 55 {
+					if pos.DonExitLen == eng.SatelliteExitLen {
 						donL = st.donExitL55[i-1]
 						donH = st.donExitH55[i-1]
 					} else {
@@ -261,6 +266,18 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 							slip := exitPrice * eng.SlippageBps / 10000.0
 							exitPrice -= slip
 							totalSlippage += slip * pos.Qty
+						}
+					} else if eng.ExitMode == "reversion" {
+						// MR long (speculare a Run): mean touch o bounce, stop fisso senza trail
+						smaMR := st.ctx.SMAShort[i]
+						if !math.IsNaN(smaMR) && bar.Close >= smaMR {
+							exit = true
+							exitReason = "mean_touch"
+							exitPrice = bar.Close
+						} else if !math.IsNaN(donH) && bar.Close > donH {
+							exit = true
+							exitReason = "bounce_don"
+							exitPrice = bar.Close
 						}
 					} else if !math.IsNaN(donL) && bar.Close < donL {
 						exit = true
@@ -300,6 +317,18 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 							slip := exitPrice * eng.SlippageBps / 10000.0
 							exitPrice += slip
 							totalSlippage += slip * pos.Qty
+						}
+					} else if eng.ExitMode == "reversion" {
+						// MR short: mirror — mean touch o breakdown, stop fisso
+						smaMR := st.ctx.SMAShort[i]
+						if !math.IsNaN(smaMR) && bar.Close <= smaMR {
+							exit = true
+							exitReason = "mean_touch"
+							exitPrice = bar.Close
+						} else if !math.IsNaN(donL) && bar.Close < donL {
+							exit = true
+							exitReason = "bounce_don"
+							exitPrice = bar.Close
 						}
 					} else if !math.IsNaN(donH) && bar.Close > donH {
 						exit = true
@@ -572,9 +601,9 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 										StopPrice: stopPx, Units: 1, EntryBarIdx: i,
 										RiskPct: dec.RiskPct, Leverage: dec.Leverage,
 										Notional: dec.Notional, RiskAmount: dec.RiskAmount,
-										SizingLog: logFactors(dec) + " | pyramid separate (wide Don55)",
+										SizingLog: logFactors(dec) + " | pyramid separate (wide satellite ch)",
 										EntryFee:  fee, EntryReason: sig.Reason + " | pyramid separate",
-										IsSatellite: false, DonExitLen: 55,
+										IsSatellite: false, DonExitLen: eng.SatelliteExitLen,
 									}
 									st.positions = append(st.positions, leg)
 								} else if lim.PyramidingRiskNeutral {
@@ -639,9 +668,9 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 									StopPrice: stopPx, Units: 1, EntryBarIdx: i,
 									RiskPct: satRisk, Leverage: satNotional / ms.Equity,
 									Notional: satNotional, RiskAmount: satRisk / 100 * ms.Equity,
-									SizingLog:   logFactors(dec) + " | satellite 30% (wide Don55)",
+									SizingLog:   logFactors(dec) + " | satellite 30% (wide satellite ch)",
 									EntryFee:    fee * lim.SatelliteAlloc,
-									EntryReason: sig.Reason, IsSatellite: true, DonExitLen: 55,
+									EntryReason: sig.Reason, IsSatellite: true, DonExitLen: eng.SatelliteExitLen,
 								}
 								st.positions = append(st.positions, corePos, satPos)
 							} else {

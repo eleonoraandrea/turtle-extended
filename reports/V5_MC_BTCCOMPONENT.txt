@@ -1,0 +1,2 @@
+MC BTCUSDT A runs 2000 median 978.2% p5 463.0% p95 1644.9% probProfit 100.0%
+saved reports/BTCUSDT_A_MC.json

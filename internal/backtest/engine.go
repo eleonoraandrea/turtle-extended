@@ -121,7 +121,9 @@ type EngineConfig struct {
 	TrailATRMult   float64
 	TrailMode      string
 	DonExit        int
+	SatelliteExitLen int // canale exit satellite/gambe wide (0 → 55 default)
 	EntryMode      string // close|intrabar (default close; intrabar = fill a livello canale)
+	ExitMode       string // "" | trend (default) | reversion — MR: exit al mean-touch/bounce
 }
 
 func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng EngineConfig) *Result {
@@ -184,8 +186,14 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 	donExitH = indicators.DonchianHigh(high, exitLen)
 	donExitL = indicators.DonchianLow(low, exitLen)
 	// satellite exit (wider, for 30% satellite to capture large winners)
-	donExitH55 := indicators.DonchianHigh(high, 55)
-	donExitL55 := indicators.DonchianLow(low, 55)
+	// lunghezza configurabile (default 55): su H1 si scala in barre per mantenere
+	// la finestra calendar del 4h (55×4h → 220×1h)
+	satExitLen := eng.SatelliteExitLen
+	if satExitLen <= 0 {
+		satExitLen = 55
+	}
+	donExitH55 := indicators.DonchianHigh(high, satExitLen)
+	donExitL55 := indicators.DonchianLow(low, satExitLen)
 
 	intervalH := intervalHours(cfg.General.Interval)
 	if intervalH == 0 {
@@ -288,7 +296,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 			// the band computed at bar i makes the close-exit unreachable.
 			var donL, donH float64
 			if i >= 1 {
-				if pos.DonExitLen == 55 {
+				if pos.DonExitLen == satExitLen {
 					donL = donExitL55[i-1]
 					donH = donExitH55[i-1]
 				} else {
@@ -310,6 +318,19 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 						slip := exitPrice * eng.SlippageBps / 10000.0
 						exitPrice -= slip
 						totalSlippage += slip * pos.Qty
+					}
+				} else if eng.ExitMode == "reversion" {
+					// MR long: esce al ritocco della mean o su rimbalzo sopra il canale breve;
+					// stop FISSO (niente trailing — il trade è un bounce, non un trend)
+					smaMR := ctx.SMAShort[i]
+					if !math.IsNaN(smaMR) && bar.Close >= smaMR {
+						exit = true
+						exitReason = "mean_touch"
+						exitPrice = bar.Close
+					} else if !math.IsNaN(donH) && bar.Close > donH {
+						exit = true
+						exitReason = "bounce_don"
+						exitPrice = bar.Close
 					}
 				} else if !math.IsNaN(donL) && bar.Close < donL {
 					exit = true
@@ -351,6 +372,18 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 						slip := exitPrice * eng.SlippageBps / 10000.0
 						exitPrice += slip
 						totalSlippage += slip * pos.Qty
+					}
+				} else if eng.ExitMode == "reversion" {
+					// MR short: mirror — mean touch o breakdown sotto il canale breve
+					smaMR := ctx.SMAShort[i]
+					if !math.IsNaN(smaMR) && bar.Close <= smaMR {
+						exit = true
+						exitReason = "mean_touch"
+						exitPrice = bar.Close
+					} else if !math.IsNaN(donL) && bar.Close < donL {
+						exit = true
+						exitReason = "bounce_don"
+						exitPrice = bar.Close
 					}
 				} else if !math.IsNaN(donH) && bar.Close > donH {
 					exit = true
@@ -683,9 +716,9 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 									StopPrice: stopPx, Units: 1, EntryBarIdx: i,
 									RiskPct: dec.RiskPct, Leverage: dec.Leverage,
 									Notional: dec.Notional, RiskAmount: dec.RiskAmount,
-									SizingLog: logFactors(dec) + " | pyramid separate (wide Don55)",
+									SizingLog: logFactors(dec) + " | pyramid separate (wide satellite ch)",
 									EntryFee:  fee, EntryReason: sig.Reason + " | pyramid separate",
-									IsSatellite: false, DonExitLen: 55,
+									IsSatellite: false, DonExitLen: satExitLen,
 								}
 								positions = append(positions, leg)
 							} else if lim.PyramidingRiskNeutral {
@@ -756,9 +789,9 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 								StopPrice: stopPx, EntryReason: sig.Reason, Units: 1, EntryBarIdx: i,
 								RiskPct: satRisk, Leverage: satLev,
 								Notional: satNotional, RiskAmount: satRisk / 100 * ms.Equity,
-								SizingLog:   logFactors(dec) + " | satellite 30% (wide Don55)",
+								SizingLog:   logFactors(dec) + " | satellite 30% (wide satellite ch)",
 								EntryFee:    fee * lim.SatelliteAlloc,
-								IsSatellite: true, DonExitLen: 55,
+								IsSatellite: true, DonExitLen: satExitLen,
 							}
 							positions = append(positions, corePos, satPos)
 						} else {

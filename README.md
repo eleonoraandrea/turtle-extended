@@ -79,27 +79,39 @@ Obiettivo max: **Expectancy × Positive Skew × Compounding** — 55-65 perdite 
 
 Motore: bar-by-bar, fill **next open** anti look-ahead, stop intrabar (low ≤ stop), trailing chandelier/donchian, pyramiding 0.5 ATR max 4, crash brake flat 24h se drop 4h ≥8%.
 
-## Performance verificata (2026-09-04, engine post-fix)
+## Performance verificata (2026-09-05, engine post-fix — **v5 è la config finale**)
 
-Numeri riproducibili con un comando — baseline `btc_opt.yaml` vs `atps_v2.yaml`
-(protocollo completo: train/test 70/30, walk-forward 8 folds, perturbazione ±20%,
-Monte Carlo 2000, conferma ETH/SOL senza ri-ottimizzazione — report rimosso su
-richiesta 2026-09-04, in git history prima del commit 0729664):
+Numeri riproducibili con un comando — validazione completa in `reports/V5_VALIDATION.md`:
 
 ```bash
-./atps backtest --config configs/atps_v2.yaml --variant A --symbol BTCUSDT --csv data/raw/BTCUSDT_4h.csv
+./atps portfolio-backtest --config configs/atps_v5.yaml --out reports/V5_PORTFOLIO.html
+./atps backtest --config configs/atps_v3.yaml --variant A --symbol BTCUSDT --csv data/raw/BTCUSDT_4h.csv
 ```
 
-| Symbol | Config | CAGR | MaxDD | Sharpe | PF | Trades |
-|---|---|---|---|---|---|---|
-| BTCUSDT | btc_opt (baseline) | 29.55% | -23.04% | 1.15 | 1.61 | 578 |
-| BTCUSDT | **atps_v2** | **34.31%** | **-17.01%** | **1.50** | **2.14** | 416 |
-| ETHUSDT | btc_opt (baseline) | 17.18% | -28.40% | 0.71 | 1.56 | 600 |
-| ETHUSDT | **atps_v2** | **20.66%** | **-16.14%** | **1.17** | **2.18** | 410 |
-| SOLUSDT | btc_opt (baseline) | 4.27% | -24.33% | 0.30 | 1.17 | 570 |
-| SOLUSDT | **atps_v2** | **6.01%** | **-17.13%** | **0.60** | **1.38** | 452 |
+| Sistema | CAGR | MaxDD | Sharpe | Test-window CAGR/Calmar | Trades |
+|---|---|---|---|---|---|
+| v2 BTC (vecchia baseline) | 34.31% | -17.01% | 1.50 | 12.4 / 0.73 | 416 |
+| v4 portfolio r2% (baseline) | 37.04% | -19.49% | 1.38 | 26.97 / 1.64 | 1230 |
+| **v3 BTC H4** (sma300 atr1.6) | **43.42%** | **-14.31%** | **1.73** | **38.06 / 3.04** | 374 |
+| **v5 portfolio r1.8%** (BTC+ETH+SOL, v3 params) | **47.09%** | **-19.84%** | **1.57** | **42.35 / 2.29** | 1176 |
 
-### Tentativi di scala v3 (2026-09-04, entrambi bocciati dal protocollo; report rimosso su richiesta 2026-09-04 — in git history prima del commit 0729664)
+Validazione v5: WF portfolio 8/8 fold positivi (mediana Sharpe 1.40), perturb ±20% tutti
+profittevoli, MC 2000 probProfit 100% (p5 +463%), ETH/SOL confermati senza ri-ottimizzazione.
+$10k → $131k (2020-01→2026-09), fee+funding inclusi ($7.2k + $7.9k).
+
+### Evidenza negativa H1 (2026-09-05, focus richiesto utente)
+
+- **Breakout H1** (griglia 2304/simbolo, periodi calendar-scaled ×4): BTC test Cal 0.36,
+  SOL 0.33, portfolio H1 DD test -26.2% → BOCCIATO. ETH marginale (Cal 1.01 ≪ H4 2.89).
+- **Mean reversion H1** (variante M nuova, griglia 2304/simbolo): tutti i top
+candidate test-window NEGATIVI (Cal -0.08…-0.50) → edge assente in questo regime.
+- **Portfolio 7 simboli H4** (+BNB/XRP/DOGE/LINK): DD -27.4% per correlazione invernale → BOCCIATO.
+
+Conclusione: su crypto majors 2020-2026 l'H4 domina l'H1 dopo i costi (fee 4bps +
+slippage 2bps + funding). L'infrastruttura H1 (dati 58k barre, variante M, periodi
+configurabili) resta disponibile per futuri edge (funding carry, execution overlay).
+
+### Tentativi di scala bocciati (cicli precedenti)
 
 | Candidato | Full CAGR/DD | Holdout test (CAGR/Calmar) | Esito |
 |---|---|---|---|
@@ -190,7 +202,11 @@ bocciato in validazione (Decisione B; report rimosso su richiesta 2026-09-04 —
 
 ## Config — user spec per max performance
 
-Config validati: `configs/atps_v2.yaml` (single-symbol, 2026-09-04; report rimosso su richiesta 2026-09-04 — in git history prima del commit 0729664) e `configs/atps_portfolio.yaml` (portfolio v4 promosso — `reports/V4_VALIDATION.md`).
+Config validati: **`configs/atps_v5.yaml`** (portfolio finale v5, 2026-09-05), `configs/atps_v3.yaml`
+(single-symbol H4 v3) e legacy `configs/atps_v2.yaml` / `configs/atps_portfolio.yaml` (v4).
+Nuovi gradi di libertà engine per-variante: `donchian_alt`/`donchian_entry`/`sma_filter`/
+`atr_period` (periodi configurabili, default = storici), `satellite_exit_len`, `exit_mode:
+reversion` + variante M (mean reversion) — vedi `configs/default.yaml`.
 
 `configs/default.yaml` include `risk/base/min/max`, `portfolio/max_open/max_correlated`, `leverage/max:5`, `trend 55/20`, `atr 20/2.0`, `pyramiding 4 risk_neutral`, `profit satellite 30%`, `regime btc_filter/adx_min 20`, `volatility/drawdown adaptive`, `funding/OI filter` — tutti usati da `risk.LimitsFromConfig`.
 

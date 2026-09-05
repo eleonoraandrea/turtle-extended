@@ -1,0 +1,12 @@
+configs/atps_portfolio_v3.yaml PORTFOLIO train → CAGR  53.43% DD  -20.36% Sharpe 1.69 Calmar 2.62 trades 788 (boundary 2024-09)
+configs/atps_portfolio_v3.yaml PORTFOLIO test  → CAGR  41.39% DD  -20.44% Sharpe 1.35 Calmar 2.03 trades 338 (boundary 2024-09)
+configs/atps_portfolio_v3.yaml PORTFOLIO full  → CAGR  49.64% DD  -20.36% Sharpe 1.58 Calmar 2.44 trades 1162 (boundary 2024-09)
+  fold 1 (2020-01→2020-10): train Sharpe 0.00 → test Sharpe 1.88 CAGR 86.14% DD -17.34%
+  fold 2 (2020-10→2021-09): train Sharpe 1.88 → test Sharpe 0.81 CAGR 10.99% DD -11.32%
+  fold 3 (2021-09→2022-07): train Sharpe 1.78 → test Sharpe 1.77 CAGR 35.69% DD -7.47%
+  fold 4 (2022-07→2023-05): train Sharpe 1.88 → test Sharpe 0.78 CAGR 20.42% DD -14.44%
+  fold 5 (2023-05→2024-03): train Sharpe 1.60 → test Sharpe 2.87 CAGR 148.10% DD -12.09%
+  fold 6 (2024-03→2025-01): train Sharpe 1.88 → test Sharpe 0.84 CAGR 20.16% DD -11.65%
+  fold 7 (2025-01→2025-11): train Sharpe 1.59 → test Sharpe 1.99 CAGR 68.18% DD -14.11%
+  fold 8 (2025-11→2026-09): train Sharpe 1.63 → test Sharpe 1.02 CAGR 29.10% DD -20.44%
+WF mediana Sharpe: 1.40

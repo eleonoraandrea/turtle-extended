@@ -22,6 +22,8 @@ func EngineConfigFrom(cfg *config.Config, variant, symbol string) EngineConfig {
 		e = cfg.VariantC.Engine
 	case "D":
 		e = cfg.VariantD.Engine
+	case "M":
+		e = cfg.VariantM.Engine
 	}
 	trailMode := e.TrailMode
 	if trailMode == "" {
@@ -37,6 +39,14 @@ func EngineConfigFrom(cfg *config.Config, variant, symbol string) EngineConfig {
 	}
 	if donExit <= 0 {
 		donExit = 20
+	}
+	satExitLen := e.SatelliteExitLen
+	if satExitLen <= 0 {
+		satExitLen = 55
+	}
+	exitMode := e.ExitMode
+	if exitMode == "" {
+		exitMode = "trend"
 	}
 	entryMode := e.EntryMode
 	if entryMode == "" {
@@ -74,9 +84,11 @@ func EngineConfigFrom(cfg *config.Config, variant, symbol string) EngineConfig {
 		PyramidingMax:  pyrMax,
 		PyramidingMode: pyrMode,
 		PyramidStepATR: step,
-		TrailATRMult:   trailMult,
-		TrailMode:      trailMode,
-		DonExit:        donExit,
-		EntryMode:      entryMode,
+		TrailATRMult:     trailMult,
+		TrailMode:        trailMode,
+		DonExit:          donExit,
+		SatelliteExitLen: satExitLen,
+		EntryMode:        entryMode,
+		ExitMode:         exitMode,
 	}
 }

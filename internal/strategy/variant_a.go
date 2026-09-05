@@ -12,7 +12,7 @@ type VariantA struct{ cfg *config.Config }
 func NewA(cfg *config.Config) *VariantA             { return &VariantA{cfg: cfg} }
 func (s *VariantA) Name() string                    { return s.cfg.VariantA.Name }
 func (s *VariantA) Variant() string                 { return "A" }
-func (s *VariantA) Warmup() int                     { return 200 }
+func (s *VariantA) Warmup() int                     { return VariantWarmup(s.cfg, "A") }
 func (s *VariantA) Prepare(bars data.Bars) *Context { return PrepareCommon(bars, s.cfg, "A") }
 
 // Classic Turtle: HH20 breakout + SMA200 filter + 2ATR stop + LL10 exit handled by engine.

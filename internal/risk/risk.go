@@ -430,6 +430,15 @@ func LimitsFromConfig(cfg *config.Config, variant string) RiskLimits {
 		if cfg.VariantD.KellyCapPct > 0 {
 			lim.KellyCapPct = cfg.VariantD.KellyCapPct
 		}
+	case "M":
+		if cfg.VariantM.RiskPct > 0 {
+			lim.RiskPerTradePct = cfg.VariantM.RiskPct
+			lim.MaxRiskPct = cfg.VariantM.RiskPct
+		}
+		// M: niente satellite (skew non richiesto su MR) né vol targeting
+		lim.VolTargetPct = 0
+		lim.SatelliteEnabled = false
+		lim.SatelliteAlloc = 0
 	}
 	// ensure Base <= Max (clamp base if variant lowers max below base)
 	if lim.BaseRiskPct > lim.MaxRiskPct {

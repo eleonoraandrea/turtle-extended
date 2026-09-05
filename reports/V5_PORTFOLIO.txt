@@ -1,0 +1,7 @@
+PORTFOLIO BTCUSDT+ETHUSDT+SOLUSDT: Return 1213.30% CAGR 47.09% Sharpe 1.57 Sortino 1.62 MaxDD -19.84% PF 1.90 Trades 1176 Fee $7212.57 Funding $7860.99
+scaling ceiling: 1.80% (maxRisk lega)
+per-symbol (da trade list):
+  BTCUSDT: trades 370, win 120 (32%), PnL netto $62368.71
+  ETHUSDT: trades 400, win 126 (32%), PnL netto $49127.66
+  SOLUSDT: trades 406, win 125 (31%), PnL netto $9833.87
+report reports/V5_PORTFOLIO.html
