@@ -1,0 +1,4 @@
+  risk base +0.5%: 1077.9% (Δ0.0%) Sharpe 1.78 PF 2.74 R1.03 Skew 4.53
+  risk base -0.5%: 718.8% (Δ-359.1%) Sharpe 1.80 PF 2.94 R1.03 Skew 4.53
+Robustness: range 718.8% to 1077.9% (Δ359.1%), all 6 perturbs PROFITTEVOLI
+saved reports/BTCUSDT_A_PERTURB.json

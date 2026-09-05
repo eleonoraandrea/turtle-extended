@@ -68,8 +68,9 @@ longs affollati che pagano, short speculare): economicamente motivato, scelto su
 - WF portfolio 8 folds (finale): **8/8 fold test positivi**, mediana test Sharpe **1.44**
   (v4: 1.23). Fold migliore +134.62%, peggiore +14.21%.
 - Contributi full: BTC $62.4k > ETH $49.1k > SOL $9.8k su $10k iniziali ($131.3k finali).
-- Perturb/MC: eseguiti sul componente BTC dominante con v3 r2.0 (`reports/V5_PERTURB_BTCCOMPONENT.txt`,
-  `V5_MC_BTCCOMPONENT.txt`) — r1.8% è solo riscaling lineare del rischio.
+- Perturb/MC FINALI (v3+veto, BTC): tutti 6 perturb PROFITTEVOLI (range 719%-1078%),
+  MC 2000: mediana 1066%, p5 483%, probProfit **100%** (`reports/V5_PERTURB_FINAL.txt`,
+  `V5_MC_FINAL.txt`) — r1.8% portfolio è riscaling lineare del rischio.
 
 ## Tentativi BOCCIATI (evidenza negativa, non sprecare cicli)
 
