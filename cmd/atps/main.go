@@ -651,7 +651,19 @@ func cmdReportDemo() *cobra.Command {
 }
 
 func engineFromCfg(cfg *config.Config, variant, symbol string) backtest.EngineConfig {
-	return backtest.EngineConfigFrom(cfg, variant, symbol)
+	eng := backtest.EngineConfigFrom(cfg, variant, symbol)
+	// regime BTC filter: carica la serie BTC se il filtro è attivo (spec regime.btc_filter).
+	// Se il CSV non esiste il filtro resta silenziosamente inattivo (engine: len==0).
+	if cfg.Regime.BtcFilter {
+		path := fmt.Sprintf("data/raw/BTCUSDT_%s.csv", cfg.General.Interval)
+		if symbol != "BTCUSDT" {
+			if bars, err := data.LoadBarsCSV(path); err == nil {
+				eng.RegimeBars = bars
+				eng.RegimeSMALen = cfg.Regime.SMALen
+			}
+		}
+	}
+	return eng
 }
 
 // intervalDuration converte l'interval Binance in time.Duration.

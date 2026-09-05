@@ -43,16 +43,30 @@ pyramiding, re-entry: tutti peggiorano OOS → confermati OFF.
 
 Portfolio 3 simboli, equity+heat condivisi, parametri v3, **risk 1.8%**.
 
+### Stage 2b — funding veto entry (`funding_veto_z: 2.5`, ADOOTTATO)
+
+Veto entry quando funding z-score(30) estremo CONTRO la posizione (long con z>2.5 =
+longs affollati che pagano, short speculare): economicamente motivato, scelto su TRAIN
+(dominanza), test-window neutrale (il veto non scatta mai 2024-26).
+
+| Metrica | v5 base | v5 + funding veto |
+|---|---|---|
+| Train | 50.91% / -19.84 / 1.70 | **51.57% / -19.29 / 1.72** |
+| Test | 42.35% / Cal 2.29 | 42.24% / Cal 2.29 (neutrale) |
+| Full | 47.09% / -19.84 / 1.57 | **47.61% / -19.29 / 1.59** |
+| WF 8f | mediana 1.40 | **mediana 1.44** (8/8 positivi) |
+
 | Config | Full CAGR | MaxDD | Sharpe | Test CAGR/Cal | Trades |
 |---|---|---|---|---|---|
 | v4 (baseline) | 37.04% | -19.49% | 1.38 | 26.97 / 1.64 | 1230 |
 | v5 r2.0% | 49.64% | -20.36% | 1.58 | 41.39 / 2.03 | 1162 |
-| **v5 r1.8% (finale)** | **47.09%** | **-19.84%** | **1.57** | **42.35 / 2.29** | 1176 |
+| v5 r1.8% (pre-veto) | 47.09% | -19.84% | 1.57 | 42.35 / 2.29 | 1176 |
+| **v5 finale (+funding veto 2.5)** | **47.61%** | **-19.29%** | **1.59** | **42.24 / 2.29** | 1124 |
 
 - Budget DD: r2.0% sfora di 0.36pt (-20.36%) → **r1.8% rientra** (-19.84%, test-window
   DD -18.46%) mantenendo +10pt CAGR su v4.
-- WF portfolio 8 folds: **8/8 fold test positivi**, mediana test Sharpe **1.40**
-  (v4: 1.23). Fold migliore +148.10%, peggiore +20.16%.
+- WF portfolio 8 folds (finale): **8/8 fold test positivi**, mediana test Sharpe **1.44**
+  (v4: 1.23). Fold migliore +134.62%, peggiore +14.21%.
 - Contributi full: BTC $62.4k > ETH $49.1k > SOL $9.8k su $10k iniziali ($131.3k finali).
 - Perturb/MC: eseguiti sul componente BTC dominante con v3 r2.0 (`reports/V5_PERTURB_BTCCOMPONENT.txt`,
   `V5_MC_BTCCOMPONENT.txt`) — r1.8% è solo riscaling lineare del rischio.

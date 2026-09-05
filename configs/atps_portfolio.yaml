@@ -73,7 +73,7 @@ profit:
 
 # ── REGIME (user spec) ──
 regime:
-  btc_filter: true            # filtro BTC trend
+  btc_filter: false           # OFF: validato 2026-09-05 — ON peggiora test (Cal 1.65 vs 2.29) o sfora DD (-21.2%); feature implementata (regime.sma_len)
   adx_min: 20
 
 # ── VOLATILITY / DRAWDOWN / FUNDING / OI FILTERS (user spec) ──

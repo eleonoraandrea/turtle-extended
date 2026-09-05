@@ -107,10 +107,6 @@ variant_a: # ATPS v2 — vincitore optimizer grid completa 2592 (report rimosso 
   use_ema_filter: false
   trail_mode: donchian        # v3: uscita Donchian breve
   don_exit: 10                # v3: Donchian exit 10 barre
-  engine:
-    trail_mode: donchian
-    don_exit: 10
-    satellite_exit_len: 55
   entry_mode: close           # v2: entry a close barra (niente intrabar)
   reentry:                    # v2: re-entry post stop-out OFF
     enabled: false

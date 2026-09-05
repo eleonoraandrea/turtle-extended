@@ -34,28 +34,37 @@ func (s *VariantA) Next(ctx *Context, i int) Signal {
 	ll55Prev := ctx.Don55L[i-1]
 	sma200 := ctx.SMA200[i]
 
+	// funding veto (opzionale): funding estremo CONTRO la posizione = costo+affollamento
+	fz := ctx.FundingZ[i]
+	longFundingOk := true
+	shortFundingOk := true
+	if c.FundingVetoZ > 0 && !math.IsNaN(fz) {
+		longFundingOk = fz <= c.FundingVetoZ
+		shortFundingOk = fz >= -c.FundingVetoZ
+	}
+
 	// Long entry: breakout 20 or 55 if close> sma200
 	if !math.IsNaN(hh20Prev) && closePx > hh20Prev && prevClose <= hh20Prev {
-		if math.IsNaN(sma200) || closePx > sma200 {
+		if (math.IsNaN(sma200) || closePx > sma200) && longFundingOk {
 			stop := closePx - c.ATRStopMult*atr
 			return Signal{Side: 1, Strength: 1, StopPrice: stop, Reason: "A HH20 long", Meta: map[string]float64{"atr": atr, "hh": hh20Prev}}
 		}
 	}
 	if !math.IsNaN(hh55Prev) && closePx > hh55Prev && prevClose <= hh55Prev {
-		if math.IsNaN(sma200) || closePx > sma200 {
+		if (math.IsNaN(sma200) || closePx > sma200) && longFundingOk {
 			stop := closePx - c.ATRStopMult*atr
 			return Signal{Side: 1, Strength: 1, StopPrice: stop, Reason: "A HH55 long"}
 		}
 	}
 	// Short entry: mirror
 	if !math.IsNaN(ll20Prev) && closePx < ll20Prev && prevClose >= ll20Prev {
-		if math.IsNaN(sma200) || closePx < sma200 {
+		if (math.IsNaN(sma200) || closePx < sma200) && shortFundingOk {
 			stop := closePx + c.ATRStopMult*atr
 			return Signal{Side: -1, Strength: 1, StopPrice: stop, Reason: "A LL20 short"}
 		}
 	}
 	if !math.IsNaN(ll55Prev) && closePx < ll55Prev && prevClose >= ll55Prev {
-		if math.IsNaN(sma200) || closePx < sma200 {
+		if (math.IsNaN(sma200) || closePx < sma200) && shortFundingOk {
 			stop := closePx + c.ATRStopMult*atr
 			return Signal{Side: -1, Strength: 1, StopPrice: stop, Reason: "A LL55 short"}
 		}

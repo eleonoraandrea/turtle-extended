@@ -97,6 +97,57 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 	}
 	satExitLen := eng.SatelliteExitLen
 
+	// ── BTC regime filter (spec regime.btc_filter): serie = BTCUSDT del portfolio se
+	// presente, altrimenti eng.RegimeBars. Long solo con BTC>SMA, short solo con BTC<SMA.
+	var regimeOK func(t time.Time, side int) bool
+	if cfg != nil && cfg.Regime.BtcFilter {
+		regimeSeries := eng.RegimeBars
+		if len(regimeSeries) == 0 {
+			if btcBars, ok := barsMap["BTCUSDT"]; ok {
+				regimeSeries = btcBars
+			}
+		}
+		if len(regimeSeries) > 0 {
+			smaLen := eng.RegimeSMALen
+			if smaLen <= 0 {
+				smaLen = 200
+			}
+			if cfg.Regime.SMALen > 0 {
+				smaLen = cfg.Regime.SMALen
+			}
+			btcClose := make([]float64, len(regimeSeries))
+			for j, b := range regimeSeries {
+				btcClose[j] = b.Close
+			}
+			btcSMA := indicators.SMA(btcClose, smaLen)
+			reg := make(map[time.Time]int8, len(regimeSeries))
+			for j, b := range regimeSeries {
+				v := int8(0)
+				if !math.IsNaN(btcSMA[j]) {
+					if b.Close > btcSMA[j] {
+						v = 1
+					} else if b.Close < btcSMA[j] {
+						v = -1
+					}
+				}
+				reg[b.Time] = v
+			}
+			regimeOK = func(t time.Time, side int) bool {
+				v := reg[t]
+				if v == 0 {
+					return true
+				}
+				if side == 1 && v < 0 {
+					return false
+				}
+				if side == -1 && v > 0 {
+					return false
+				}
+				return true
+			}
+		}
+	}
+
 	// stato per-simbolo (Prepare + canali donchian)
 	states := make([]*symState, 0, len(symbols))
 	for _, s := range symbols {
@@ -470,6 +521,11 @@ func RunPortfolio(barsMap map[string]data.Bars, strats map[string]strategy.Strat
 				if rc, ok := st.strat.(strategy.ReEntryChecker); ok {
 					sig = rc.ReEntry(st.ctx, i, strategy.StopOutInfo{Side: st.lastStop.side, ExitBarIdx: st.lastStop.exitBarIdx})
 				}
+			}
+
+			// ── BTC regime veto (spec regime.btc_filter) — serie BTC dal portfolio o eng.RegimeBars ──
+			if sig.Side != 0 && regimeOK != nil && !regimeOK(bar.Time, sig.Side) {
+				sig = strategy.Signal{Side: 0, Reason: "btc regime veto"}
 			}
 
 			if sig.Side != 0 && !(eng.UseNextOpen && !isIntrabar && i+1 >= n) {

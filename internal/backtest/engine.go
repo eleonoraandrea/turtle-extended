@@ -124,6 +124,9 @@ type EngineConfig struct {
 	SatelliteExitLen int // canale exit satellite/gambe wide (0 → 55 default)
 	EntryMode      string // close|intrabar (default close; intrabar = fill a livello canale)
 	ExitMode       string // "" | trend (default) | reversion — MR: exit al mean-touch/bounce
+	SatelliteTrail string // "" | chandelier — satellite traccia chandelier (TrailATRMult+1)
+	RegimeBars     data.Bars // serie BTC per regime filter (opzionale — btc_filter)
+	RegimeSMALen   int       // periodo SMA regime (default 200)
 }
 
 func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng EngineConfig) *Result {
@@ -165,6 +168,50 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 
 	ctx := strat.Prepare(bars)
 	n := len(bars)
+
+	// ── BTC regime filter (spec regime.btc_filter — serie BTC via eng.RegimeBars) ──
+	// long permessi solo con BTC > SMA(len), short solo con BTC < SMA. Look-ahead-free:
+	// la barra BTC con lo stesso timestamp è chiusa quando il segnale viene valutato.
+	var regimeOK func(i, side int) bool
+	if cfg != nil && cfg.Regime.BtcFilter && len(eng.RegimeBars) > 0 {
+		smaLen := eng.RegimeSMALen
+		if smaLen <= 0 {
+			smaLen = 200
+		}
+		if cfg.Regime.SMALen > 0 {
+			smaLen = cfg.Regime.SMALen
+		}
+		btcClose := make([]float64, len(eng.RegimeBars))
+		for j, b := range eng.RegimeBars {
+			btcClose[j] = b.Close
+		}
+		btcSMA := indicators.SMA(btcClose, smaLen)
+		reg := make(map[time.Time]int8, len(eng.RegimeBars))
+		for j, b := range eng.RegimeBars {
+			v := int8(0)
+			if !math.IsNaN(btcSMA[j]) {
+				if b.Close > btcSMA[j] {
+					v = 1
+				} else if b.Close < btcSMA[j] {
+					v = -1
+				}
+			}
+			reg[b.Time] = v
+		}
+		regimeOK = func(i, side int) bool {
+			v := reg[bars[i].Time]
+			if v == 0 {
+				return true // warmup/incerto: nessun veto
+			}
+			if side == 1 && v < 0 {
+				return false
+			}
+			if side == -1 && v > 0 {
+				return false
+			}
+			return true
+		}
+	}
 	equity := eng.InitialCapital
 	peak := equity
 	var positions []*Position
@@ -342,7 +389,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					exitPrice = bar.Close
 				} else {
 					var newStop float64
-					if eng.TrailMode == "chandelier" {
+					if eng.TrailMode == "chandelier" || (pos.IsSatellite && eng.SatelliteTrail == "chandelier") {
 						// satellite uses wider trail to let large winners run
 						mult := eng.TrailATRMult
 						if mult <= 0 {
@@ -395,7 +442,7 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 					exitPrice = bar.Close
 				} else {
 					var newStop float64
-					if eng.TrailMode == "chandelier" {
+					if eng.TrailMode == "chandelier" || (pos.IsSatellite && eng.SatelliteTrail == "chandelier") {
 						mult := eng.TrailATRMult
 						if mult <= 0 {
 							mult = 3.0
@@ -565,6 +612,10 @@ func Run(bars data.Bars, strat strategy.Strategy, cfg *config.Config, eng Engine
 			if rc, ok := strat.(strategy.ReEntryChecker); ok {
 				sig = rc.ReEntry(ctx, i, strategy.StopOutInfo{Side: lastStop.side, ExitBarIdx: lastStop.exitBarIdx})
 			}
+		}
+		// ── BTC regime veto (spec regime.btc_filter) ──
+		if sig.Side != 0 && regimeOK != nil && !regimeOK(i, sig.Side) {
+			sig = strategy.Signal{Side: 0, Reason: "btc regime veto"}
 		}
 		// with UseNextOpen a signal on the final bar can never fill: discard it
 		// instead of entering at close and instantly closing EOD with phantom fees.

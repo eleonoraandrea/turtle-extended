@@ -48,6 +48,10 @@ func EngineConfigFrom(cfg *config.Config, variant, symbol string) EngineConfig {
 	if exitMode == "" {
 		exitMode = "trend"
 	}
+	satTrail := e.SatelliteTrail
+	if satTrail == "" {
+		satTrail = "donchian"
+	}
 	entryMode := e.EntryMode
 	if entryMode == "" {
 		entryMode = "close"
@@ -90,5 +94,6 @@ func EngineConfigFrom(cfg *config.Config, variant, symbol string) EngineConfig {
 		SatelliteExitLen: satExitLen,
 		EntryMode:        entryMode,
 		ExitMode:         exitMode,
+		SatelliteTrail:   satTrail,
 	}
 }

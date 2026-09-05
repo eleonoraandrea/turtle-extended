@@ -73,7 +73,7 @@ profit:
 
 # ── REGIME (user spec) ──
 regime:
-  btc_filter: true            # filtro BTC trend
+  btc_filter: false           # OFF: validato 2026-09-05 — ON peggiora test (Cal 1.65 vs 2.29) o sfora DD (-21.2%); feature implementata (regime.sma_len)
   adx_min: 20
 
 # ── VOLATILITY / DRAWDOWN / FUNDING / OI FILTERS (user spec) ──
@@ -105,12 +105,10 @@ variant_a: # ATPS v2 — vincitore optimizer grid completa 2592 (report rimosso 
   risk_pct: 2.0
   sma_filter: 300
   use_ema_filter: false
+  funding_veto_z: 2.5           # veto entry se funding z-score estremo contro posizione (validato 2026-09-05)
   trail_mode: donchian        # v2: uscita Donchian breve (niente chandelier/trailing ATR)
   don_exit: 10                # v3: exit 10
-  engine:
-    trail_mode: donchian
-    don_exit: 10
-    satellite_exit_len: 55
+  satellite_exit_len: 55
   entry_mode: close           # v2: entry a close barra (niente intrabar)
   reentry:                    # v2: re-entry post stop-out OFF
     enabled: false

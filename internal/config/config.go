@@ -103,6 +103,7 @@ type ProfitCfg struct {
 type RegimeCfg struct {
 	BtcFilter bool    `yaml:"btc_filter"`
 	AdxMin    float64 `yaml:"adx_min"`
+	SMALen    int     `yaml:"sma_len"` // periodo SMA del regime BTC (default 200 barre)
 }
 type VolatilityCfg struct {
 	AdaptiveRisk bool `yaml:"adaptive_risk"`
@@ -140,6 +141,7 @@ type EngineCfg struct {
 	SatelliteExitLen   int     `yaml:"satellite_exit_len"`   // canale exit satellite/gambe wide (default 55)
 	EntryMode          string  `yaml:"entry_mode"`           // close|intrabar (default close)
 	ExitMode           string  `yaml:"exit_mode"`            // "" | trend (default) | reversion (MR: mean-touch/bounce)
+	SatelliteTrail     string  `yaml:"satellite_trail"`      // "" | chandelier — satellite traccia chandelier invece del canale wide
 	PyramidingUnits    int     `yaml:"pyramiding_max_units"` // override unità pyramiding
 	PyramidStepATR     float64 `yaml:"pyramid_step_atr"`
 }
@@ -161,6 +163,7 @@ type VariantA struct {
 	RiskPct       float64    `yaml:"risk_pct"`
 	SMAFilter     int        `yaml:"sma_filter"`
 	UseEMAFilter  bool       `yaml:"use_ema_filter"`
+	FundingVetoZ  float64    `yaml:"funding_veto_z"` // >0: veto long se z>+th, short se z<−th (0 = off)
 	Engine        EngineCfg  `yaml:",inline"`
 	ReEntry       ReEntryCfg `yaml:"reentry"`
 }

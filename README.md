@@ -93,11 +93,14 @@ Numeri riproducibili con un comando — validazione completa in `reports/V5_VALI
 | v2 BTC (vecchia baseline) | 34.31% | -17.01% | 1.50 | 12.4 / 0.73 | 416 |
 | v4 portfolio r2% (baseline) | 37.04% | -19.49% | 1.38 | 26.97 / 1.64 | 1230 |
 | **v3 BTC H4** (sma300 atr1.6) | **43.42%** | **-14.31%** | **1.73** | **38.06 / 3.04** | 374 |
-| **v5 portfolio r1.8%** (BTC+ETH+SOL, v3 params) | **47.09%** | **-19.84%** | **1.57** | **42.35 / 2.29** | 1176 |
+| **v5 portfolio finale** (r1.8% + funding veto 2.5) | **47.61%** | **-19.29%** | **1.59** | **42.24 / 2.29** | 1124 |
 
-Validazione v5: WF portfolio 8/8 fold positivi (mediana Sharpe 1.40), perturb ±20% tutti
+Validazione v5: WF portfolio 8/8 fold positivi (mediana Sharpe 1.44), perturb ±20% tutti
 profittevoli, MC 2000 probProfit 100% (p5 +463%), ETH/SOL confermati senza ri-ottimizzazione.
-$10k → $131k (2020-01→2026-09), fee+funding inclusi ($7.2k + $7.9k).
+$10k → $134k (2020-01→2026-09), fee+funding inclusi ($7.2k + $8.1k).
+Extra validati 2026-09-05: `funding_veto_z: 2.5` (veto entry su funding estremo contro
+posizione — train-dominante, test neutrale). Bocciati: btc_filter ON (test Cal 1.65 o
+DD -21.2%), satellite chandelier, intrabar H4, re-entry H4, portfolio 7 simboli.
 
 ### Evidenza negativa H1 (2026-09-05, focus richiesto utente)
 
