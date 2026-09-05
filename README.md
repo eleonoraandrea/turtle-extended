@@ -2,9 +2,48 @@
 
 Framework quantitativo perpetuo: **Binance dati, Orderly esecuzione**.
 
-> Variant A classic Turtle → B + regime → C + funding/OI/volume → D full adaptive (breakout 20/55/100, ATR, ADX, EMA 50/200, vol regime, crash brake, pyramiding, trailing chandelier, vol-targeting). Report HTML MT5-style dettagliato, self-contained, Lightweight-Charts 4.1.
+[![Latest release](https://img.shields.io/badge/release-v5.0.0-blue)](https://github.com/eleonoraandrea/turtle-extended/releases) [![Backtest](https://img.shields.io/badge/CAGR-47.6%25-brightgreen)](reports/V5_VALIDATION.md) [![MaxDD](https://img.shields.io/badge/MaxDD--19.3%25-orange)](reports/V5_VALIDATION.md)
+
+> Variant A classic Turtle → B + regime → C + funding/OI/volume → D full adaptive (breakout 20/55/100, ATR, ADX, EMA 50/200, vol regime, crash brake, pyramiding, trailing chandelier, vol-targeting). Report HTML MT4-style dettagliato, self-contained, Lightweight-Charts 4.1.
 
 > **Prima volta? → [Guida Avvio completa → docs/GUIDA_AVVIO.md](docs/GUIDA_AVVIO.md)** — clona, build, dati reali, backtest, TUI, bot live paper/live.
+
+## 📦 Download — packages per tutte le versioni
+
+Binari precompilati (backtest+TUI+paper bot e bot live `atps-live`) per **Linux e Windows**, con config validati, report e immagini:
+
+| Versione | Descrizione | Linux | Windows |
+|---|---|---|---|
+| **v5.0.0** ⭐ | Portfolio finale BTC+ETH+SOL r1.8% + funding veto — **47.61% CAGR / -19.29% DD** | [tar.gz](../../releases/download/v5.0.0/atps_v5_linux_amd64.tar.gz) | [zip](../../releases/download/v5.0.0/atps_v5_windows_amd64.zip) |
+| v3.0.0 | Single-symbol H4 winner (sma300 atr1.6) — 43.42% CAGR, test Calmar 3.04 | [tar.gz](../../releases/download/v3.0.0/atps_v3_linux_amd64.tar.gz) | [zip](../../releases/download/v3.0.0/atps_v3_windows_amd64.zip) |
+| v4.0.0 | Portfolio baseline risk 2% — 37.04% CAGR | [tar.gz](../../releases/download/v4.0.0/atps_v4_linux_amd64.tar.gz) | [zip](../../releases/download/v4.0.0/atps_v4_windows_amd64.zip) |
+| v2.0.0 | Baseline storica validata — 34.31% CAGR | [tar.gz](../../releases/download/v2.0.0/atps_v2_linux_amd64.tar.gz) | [zip](../../releases/download/v2.0.0/atps_v2_windows_amd64.zip) |
+
+Tutte le release: **[github.com/eleonoraandrea/turtle-extended/releases](../../releases)** — ogni package contiene `atps`, `atps-live`, `configs/`, `reports/` e `VERSION-*.md` con quickstart. macOS: build da sorgente (`go build ./cmd/atps`).
+
+## 📈 Backtest — immagini
+
+**v5 — Portfolio BTC+ETH+SOL (risk 1.8% + funding veto): 47.61% CAGR, MaxDD -19.29%, Sharpe 1.59, $10k → $134k**
+
+![Backtest v5 Portfolio](docs/img/v5_portfolio.png)
+
+**v4 — Portfolio baseline (risk 2%): 37.04% CAGR, MaxDD -19.49%**
+
+![Backtest v4 Portfolio](docs/img/v4_portfolio.png)
+
+**v2 — BTC single-symbol baseline: 34.31% CAGR, MaxDD -17.01%**
+
+![Backtest v2 BTC](docs/img/v2_btc_a.png)
+
+Altri report in immagini: [v2 ETH](docs/img/v2_eth_a.png) · [v2 SOL](docs/img/v2_sol_a.png) — report completi interattivi in [`reports/*.html`](reports/) (self-contained, apribili offline).
+
+## 🚀 Broker live — Kerben (Orderly Network)
+
+Per l'esecuzione live il bot usa Orderly Network. **Apri un conto su Kerben con il mio referral:**
+
+> ### 👉 [**kerben.trader/?ref=EZIO**](https://kerben.trader/?ref=EZIO) — ref **EZIO**
+
+Setup live dopo la registrazione: `ORDERLY_ACCOUNT_ID=... ORDERLY_KEY=... ORDERLY_SECRET=... ./atps-live live --live --i-understand-live --symbol BTCUSDT --variant A` (dettagli in [docs/LIVE_EXECUTION_SPEC.md](docs/LIVE_EXECUTION_SPEC.md)). **Paper di default** — il live richiede flag espliciti.
 
 ## Quickstart — TUI
 
