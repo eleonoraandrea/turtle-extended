@@ -91,8 +91,8 @@ func TestHelpers(t *testing.T) {
 	if !c.IsOpenInterestFilter() {
 		t.Fatalf("OI filter true")
 	}
-	if !c.IsRegimeFilter() {
-		t.Fatalf("regime")
+	if c.IsRegimeFilter() {
+		t.Fatalf("regime: btc_filter default OFF dal 2026-09-05 (validazione: ON degrada test — vedi reports/V5_VALIDATION.md)")
 	}
 	// DefaultPath
 	p := DefaultPath()
